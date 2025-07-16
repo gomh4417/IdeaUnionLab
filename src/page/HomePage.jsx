@@ -1,13 +1,16 @@
-import Button from '../components/Button';
 import { useNavigate } from 'react-router-dom';
+
+import StartButton from '../jsx/StartButton';
+import ProjectList from '../jsx/ProjectList';
 
 function HomePage() {
     const navigate = useNavigate();
     return (
         <>
-            <Button onClick={() => navigate('/lab')}>
+            <StartButton onClick={() => navigate('/lab')}>
                 새로운 실험하기
-            </Button>
+            </StartButton>
+            <ProjectList />
         </>
     );
 }
