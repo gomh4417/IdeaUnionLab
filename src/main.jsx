@@ -17,6 +17,7 @@ const Wrapper = styled.div`
 import HomePage from './page/HomePage'
 import LabPage from './page/LabPage'
 import ResultPage from './page/ResultPage'
+import CanvasPage from './page/CanvasPage'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -26,6 +27,7 @@ createRoot(document.getElementById('root')).render(
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/lab" element={<LabPage />} />
+            <Route path="/write" element={<CanvasPage />} />
             <Route path="/result" element={<ResultPage />} />
           </Routes>
         </Router>

@@ -11,10 +11,13 @@
   },
   "dependencies": {
     "framer-motion": "^12.23.6",
+    "konva": "^9.3.22",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-konva": "^19.0.7",
     "react-router-dom": "^7.6.3",
-    "styled-components": "^6.1.19"
+    "styled-components": "^6.1.19",
+    "use-image": "^1.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

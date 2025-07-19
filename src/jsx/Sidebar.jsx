@@ -1,16 +1,45 @@
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Icons from '../assets/Icons';
 import styled, { ThemeProvider } from 'styled-components';
 import { theme } from '../styles/theme';
 
 
 // Styled Sidebar Container
+// AddItem styles
+const AddItemWrap = styled.div`
+  display: flex;
+  align-items: center;
+  width: 235px;
+  height: 64px;
+  padding: 8px 0px;
+  cursor: pointer;
+`;
+
+const AddBox = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: ${({ theme }) => theme.radius.medium};
+  border: 1px dashed ${({ theme }) => theme.colors.gray[500]};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 14px;
+`;
+
+const AddText = styled.span`
+  font-size: 14px;
+  font-weight: 400;
+  color: ${({ theme }) => theme.colors.gray[600]};
+  
+`;
 const SidebarContainer = styled.div`
   width: 236px;
   height: 725px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
-  padding: 8px;
+  padding: 14px;
   background: #fff;
   box-sizing: border-box;
   display: flex;
@@ -23,11 +52,11 @@ const SidebarContainer = styled.div`
 const BtnWrap = styled.div`
   display: flex;
   flex-direction: row;
-  gap: 0px;
+  justify-content: space-between;
 `;
 
 const Btn = styled.button`
-  width: 100px;
+  width: 104px;
   height: 45px;
   border-radius: ${props => props.theme.radius.medium};
   background: ${({ $type, theme }) => $type === 'active' ? theme.colors.secondary : 'transparent'};
@@ -44,8 +73,8 @@ const Divider = styled.div`
   width: 100%;
   height: 0.5px;
   background: ${props => props.theme.colors.gray[300]};
-  margin-bottom: 12px;
-  margin-top: 8px;
+  margin-bottom: 6px;
+  margin-top: 12px;
 `;
 
 function BtnToggle({ active, onChange }) {
@@ -63,11 +92,18 @@ function BtnToggle({ active, onChange }) {
 
 export default function Sidebar() {
   const [active, setActive] = useState('raw');
+  const navigate = useNavigate();
   return (
     <ThemeProvider theme={theme}>
       <SidebarContainer>
         <BtnToggle active={active} onChange={setActive} />
         <Divider />
+        <AddItemWrap onClick={() => navigate('/write')}>
+          <AddBox>
+            <Icons type="add" size={12} color={theme.colors.gray[500]} />
+          </AddBox>
+          <AddText>원재료 추가하기</AddText>
+        </AddItemWrap>
         {/* 여기에 컨텐츠 추가 */}
       </SidebarContainer>
     </ThemeProvider>

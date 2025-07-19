@@ -6,10 +6,8 @@ const HeaderContainer = styled.header`
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #fff;
   border-radius: ${theme.radius.max};
   width: fit-content;
-  box-shadow: none;
   margin-bottom: 20px;
 `;
 
