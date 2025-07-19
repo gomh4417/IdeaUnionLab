@@ -12,6 +12,7 @@ const Wrapper = styled.div`
   max-height: 834px;
   overflow: hidden;
   box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.5);
+  position: relative;
 `
 
 import HomePage from './page/HomePage'

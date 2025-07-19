@@ -4,6 +4,7 @@ import styled from 'styled-components';
 import { theme } from '../styles/theme';
 
 import Header from '../jsx/Header';
+import ActionBtn from '../jsx/ActionBtn';
 
 import { Stage, Layer, Line, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
@@ -48,12 +49,17 @@ const LeftCon = styled.div`
 
 const RightCon = styled.div`
   flex: 1;
+  max-width: 804px;
+  max-height: 623px;
   background: ${theme.colors.gray[100]};
   border-radius: ${theme.radius.medium};
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
 `;
 
 const TitleInput = styled.input.attrs({ maxLength: 50 })`
@@ -65,12 +71,15 @@ const TitleInput = styled.input.attrs({ maxLength: 50 })`
   padding: 12px;
   font-size: 16px;
   font-weight: 400;
+  font-family: 'Pretendard', sans-serif;
   color: ${({ $hasValue }) => $hasValue ? theme.colors.gray[900] : theme.colors.gray[500]};
   background: #fff;
   border-bottom: 1px solid ${theme.colors.primary};
   box-shadow: ${inputShadow};
   &:focus {
     box-shadow: ${theme.shadow};
+    transition: all 0.2s ease-in-out;
+    border-bottom: 2px solid ${theme.colors.primary};
   }
 `;
 
@@ -83,6 +92,7 @@ const ContentInput = styled.textarea`
   padding: 12px;
   font-size: 14px;
   font-weight: 300;
+  font-family: 'Pretendard', sans-serif;
   color: ${({ $hasValue }) => $hasValue ? theme.colors.gray[900] : theme.colors.gray[500]};
   background: #fff;
   border-bottom: 1px solid ${theme.colors.primary};
@@ -90,10 +100,12 @@ const ContentInput = styled.textarea`
   box-shadow: ${inputShadow};
   &:focus {
     box-shadow: ${theme.shadow};
+    transition: all 0.2s ease-in-out;
+    border-bottom: 2px solid ${theme.colors.primary};
   }
 `;
 
-const BottomCon = styled.div`
+const ToolBarWrap = styled.div`
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -141,8 +153,8 @@ function CanvasPage() {
   const [content, setContent] = useState('');
   const [activeTool, setActiveTool] = useState('pen');
 
-  const [penColor] = useState('#222'); // ✍️ 기본 펜 색상, 여기서 바꿀 수 있음
-  const [penWidth] = useState(3);      // ✍️ 기본 펜 굵기, 여기서 바꿀 수 있음
+  const [penColor] = useState('#131313');
+  const [penWidth] = useState(8);
 
   const [lines, setLines] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -152,6 +164,14 @@ function CanvasPage() {
   const fileInputRef = useRef();
   const stageRef = useRef();
   const [konvaImage] = useImage(imageUrl);
+  // 프로젝트 임시 배열 (로컬)
+  const [projects, setProjects] = useState([]);
+
+  // 캔버스 이미지를 dataURL로 변환
+  const getCanvasImageUrl = () => {
+    if (!stageRef.current) return null;
+    return stageRef.current.toDataURL({ pixelRatio: 2 });
+  };
 
   const handleMouseDown = (e) => {
     if (activeTool === 'pen' || activeTool === 'eraser') {
@@ -222,7 +242,7 @@ function CanvasPage() {
           </LeftCon>
 
           <RightCon>
-            <div style={{ width: 804, height: 623, background: '#fff', borderRadius: theme.radius.small, boxShadow: inputShadow, position: 'relative' }}>
+            <div style={{ width: 804, height: 623, background: '#fff', borderRadius: theme.radius.small, boxShadow: inputShadow, position: 'relative', overflow: 'hidden', display: 'flex' }}>
               <Stage
                 width={804}
                 height={623}
@@ -231,6 +251,7 @@ function CanvasPage() {
                 onMouseDown={handleMouseDown}
                 onMousemove={handleMouseMove}
                 onMouseup={handleMouseUp}
+                style={{ width: 804, height: 623 }}
               >
                 {/* 이미지 전용 레이어: 지우개 영향 받지 않도록 분리 */}
                 <Layer listening={false}>
@@ -276,10 +297,12 @@ function CanvasPage() {
                   justifyContent: 'center',
                   color: theme.colors.gray[400],
                   pointerEvents: 'none',
+                  width: '100%',
+                  gap: '4px',
                 }}>
-                  <img src="/draw.svg" alt="guide" width={120} height={90} style={{ marginBottom: 16 }} />
-                  <div style={{ fontSize: 18, fontWeight: 500 }}>아이디어 작성하기</div>
-                  <div style={{ fontSize: 14, color: theme.colors.gray[300] }}>
+                  <img src="/draw.svg" alt="guide" width={215} height={146} style={{ marginBottom: 24 }} />
+                  <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500] }}>아이디어 작성하기</div>
+                  <div style={{ fontSize: 16, fontWeight: 300, color: theme.colors.gray[400] }}>
                     하단의 도구를 활용하여 아이디어를 그림이나 이미지로 표현해주세요!
                   </div>
                 </div>
@@ -298,7 +321,7 @@ function CanvasPage() {
         </MainLayout>
 
         {/* 하단 툴바 */}
-        <BottomCon>
+        <ToolBarWrap>
           {TOOLBAR_ICONS.map(({ type, key }) => (
             <ToolbarBtn
               key={key}
@@ -315,7 +338,31 @@ function CanvasPage() {
               />
             </ToolbarBtn>
           ))}
-        </BottomCon>
+        </ToolBarWrap>
+          
+          <ActionBtn
+            type="default"
+            iconName="add"
+            title="추가하기"
+            onClick={() => {
+              const isCanvasEmpty = (!lines || lines.length === 0) && !imageUrl;
+              if (!title || !content || isCanvasEmpty) {
+                alert('아이디어를 전부 작성해주세요!');
+                return;
+              }
+              const canvasImageUrl = getCanvasImageUrl();
+              const newProject = {
+                title,
+                content,
+                imageUrl: canvasImageUrl,
+                date: new Date().toISOString().slice(0, 10),
+              };
+              const nextProjects = [...projects, newProject];
+              setProjects(nextProjects);
+              navigate('/lab', { state: { projects: nextProjects } });
+            }}
+          />
+
       </Container>
     </OuterWrap>
   );

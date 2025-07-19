@@ -1,5 +1,6 @@
 
 import { useState } from 'react';
+import ItemList from './ItemList';
 import { useNavigate } from 'react-router-dom';
 import Icons from '../assets/Icons';
 import styled, { ThemeProvider } from 'styled-components';
@@ -36,10 +37,10 @@ const AddText = styled.span`
 `;
 const SidebarContainer = styled.div`
   width: 236px;
-  height: 725px;
+  height: 720px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
-  padding: 14px;
+  padding: 10px 14px;
   background: #fff;
   box-sizing: border-box;
   display: flex;
@@ -74,7 +75,7 @@ const Divider = styled.div`
   height: 0.5px;
   background: ${props => props.theme.colors.gray[300]};
   margin-bottom: 6px;
-  margin-top: 12px;
+  margin-top: 8px;
 `;
 
 function BtnToggle({ active, onChange }) {
@@ -90,8 +91,9 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ projects = [] }) {
   const [active, setActive] = useState('raw');
+  const [activatedIdx, setActivatedIdx] = useState(null);
   const navigate = useNavigate();
   return (
     <ThemeProvider theme={theme}>
@@ -104,7 +106,8 @@ export default function Sidebar() {
           </AddBox>
           <AddText>원재료 추가하기</AddText>
         </AddItemWrap>
-        {/* 여기에 컨텐츠 추가 */}
+        {/* ItemList로 프로젝트 리스트 렌더링 */}
+        <ItemList items={projects} activatedIdx={activatedIdx} onItemClick={setActivatedIdx} />
       </SidebarContainer>
     </ThemeProvider>
   );

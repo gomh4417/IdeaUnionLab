@@ -32,5 +32,5 @@ export const theme = {
         max: '999px',
     },
 
-    shadow: `0px 4px 8px rgba(0, 0, 0, 0.12), 0px 0px 4px rgba(0, 0, 0, 0.1)`,
+    shadow: `0px 4px 8px rgba(0, 0, 0, 0.13), 0px 0px 4px rgba(0, 0, 0, 0.1)`,
 };
