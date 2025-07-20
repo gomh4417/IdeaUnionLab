@@ -91,23 +91,24 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar({ projects = [] }) {
+export default function Sidebar({ projects = [], activatedIdx, setActivatedIdx, onDeleteItem }) {
   const [active, setActive] = useState('raw');
-  const [activatedIdx, setActivatedIdx] = useState(null);
   const navigate = useNavigate();
   return (
     <ThemeProvider theme={theme}>
       <SidebarContainer>
         <BtnToggle active={active} onChange={setActive} />
         <Divider />
-        <AddItemWrap onClick={() => navigate('/write')}>
-          <AddBox>
-            <Icons type="add" size={12} color={theme.colors.gray[500]} />
-          </AddBox>
-          <AddText>원재료 추가하기</AddText>
-        </AddItemWrap>
+        {active === 'raw' && (
+          <AddItemWrap onClick={() => navigate('/write')}>
+            <AddBox>
+              <Icons type="add" size={12} color={theme.colors.gray[500]} />
+            </AddBox>
+            <AddText>원재료 추가하기</AddText>
+          </AddItemWrap>
+        )}
         {/* ItemList로 프로젝트 리스트 렌더링 */}
-        <ItemList items={projects} activatedIdx={activatedIdx} onItemClick={setActivatedIdx} />
+        <ItemList items={projects} activatedIdx={activatedIdx} onDeleteItem={onDeleteItem} />
       </SidebarContainer>
     </ThemeProvider>
   );

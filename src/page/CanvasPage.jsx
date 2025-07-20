@@ -6,16 +6,10 @@ import { theme } from '../styles/theme';
 import Header from '../jsx/Header';
 import ActionBtn from '../jsx/ActionBtn';
 
+
 import { Stage, Layer, Line, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
-
-const ICON_SVGS = {
-  pen: '/pen.svg',
-  eraser: '/eraser.svg',
-  image: '/addImg.svg',
-  dots: '/random.svg',
-  undo: '/replay.svg',
-};
+import Icons from '../jsx/Icons';
 
 const inputShadow = '0px 4px 8px rgba(0,0,0,0.05)';
 
@@ -140,7 +134,7 @@ const TOOLBAR_ICONS = [
   { type: 'pen', key: 'pen' },
   { type: 'eraser', key: 'eraser' },
   { type: 'image', key: 'image' },
-  { type: 'dots', key: 'dots' },
+  { type: 'ifl', key: 'ifl' },
   { type: 'undo', key: 'undo' },
 ];
 
@@ -329,13 +323,7 @@ function CanvasPage() {
               onClick={() => handleToolbarClick(type)}
               aria-label={type}
             >
-              <img
-                src={ICON_SVGS[type]}
-                alt={type}
-                width={42}
-                height={42}
-                style={{ pointerEvents: 'none' }}
-              />
+              <Icons type={type} size={28} color={activeTool === type ? '#222' : '#aaa'} />
             </ToolbarBtn>
           ))}
         </ToolBarWrap>
@@ -357,9 +345,11 @@ function CanvasPage() {
                 imageUrl: canvasImageUrl,
                 date: new Date().toISOString().slice(0, 10),
               };
-              const nextProjects = [...projects, newProject];
-              setProjects(nextProjects);
-              navigate('/lab', { state: { projects: nextProjects } });
+              setProjects(prev => {
+                const nextProjects = [...prev, newProject];
+                navigate('/lab', { state: { projects: nextProjects } });
+                return nextProjects;
+              });
             }}
           />
 

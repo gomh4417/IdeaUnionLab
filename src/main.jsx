@@ -1,9 +1,12 @@
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { ThemeProvider, styled } from 'styled-components'
 import { theme } from './styles/theme'
 import './index.css'
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
 
 const Wrapper = styled.div`
   width: 100vw;
@@ -22,17 +25,19 @@ import CanvasPage from './page/CanvasPage'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ThemeProvider theme={theme}>
-      <Wrapper>
-        <Router basename={import.meta.env.BASE_URL}>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/lab" element={<LabPage />} />
-            <Route path="/write" element={<CanvasPage />} />
-            <Route path="/result" element={<ResultPage />} />
-          </Routes>
-        </Router>
-      </Wrapper>
-    </ThemeProvider>
+    <DndProvider backend={HTML5Backend}>
+      <ThemeProvider theme={theme}>
+        <Wrapper>
+          <Router basename={import.meta.env.BASE_URL}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/lab" element={<LabPage />} />
+              <Route path="/write" element={<CanvasPage />} />
+              <Route path="/result" element={<ResultPage />} />
+            </Routes>
+          </Router>
+        </Wrapper>
+      </ThemeProvider>
+    </DndProvider>
   </StrictMode>
 )

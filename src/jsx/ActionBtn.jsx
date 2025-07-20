@@ -1,6 +1,6 @@
 import styled, { css } from 'styled-components';
 import { theme } from '../styles/theme';
-import { getActionIcon } from './Icons';
+import Icons from './Icons';
 
 const StyledBtn = styled.button`
   display: flex;
@@ -56,7 +56,7 @@ export default function ActionBtn({ type = 'default', iconName, title, ...props 
   return (
     <StyledBtn $type={type} disabled={type === 'disabled'} {...props}>
       {!isIconOnly && title}
-      {iconName && getActionIcon(iconName, { size: 24 })}
+      {iconName && <Icons type={iconName} size={24} />}
     </StyledBtn>
   );
 }

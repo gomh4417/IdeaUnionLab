@@ -1,20 +1,52 @@
+
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
+import { useDrag } from 'react-dnd';
+import Icons from '../jsx/Icons';
+import { useRef, useState } from 'react';
 
 const ItemWrap = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
   min-width: 236px;
-  transform: translateX(-14px);
+  transform: translateX(-14px) ${({ $slid }) => $slid ? 'translateX(-44px)' : ''};
   height: 64px;
   padding: 8px 0px 8px 10px;
   cursor: pointer;
   background: ${({ $type }) => $type === 'activated' ? theme.colors.secondary : '#fff'};
   border-left: 4px solid ${({ $type }) => $type === 'activated' ? theme.colors.primary : 'transparent'};
-  transition: background 0.2s, border-color 0.2s;
+  transition: background 0.2s, border-color 0.2s, transform 0.25s cubic-bezier(0.4,0,0.2,1);
   box-sizing: border-box;
-  
+  position: relative;
+`;
+const DeleteArea = styled.div`
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 80px;
+  height: 100%;
+  z-index: 2;
+  cursor: pointer;
+`;
+
+const DeleteBtn = styled.button`
+  position: absolute;
+  right: -40px;
+  top: 0px;
+  width: 44px;
+  height: 64px;
+  background: #FF3B30;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  z-index: 3;
+  opacity: ${({ $show }) => $show ? 1 : 0};
+  pointer-events: ${({ $show }) => $show ? 'auto' : 'none'};
+  transition: opacity 0.2s;
 `;
 
 const ImgBox = styled.div`
@@ -59,9 +91,45 @@ const Tag = styled.div`
   letter-spacing: -0.02em;
 `;
 
-export default function Item({ imageUrl, title, type = 'default', onClick }) {
+export default function Item({ imageUrl, title, type = 'default', onClick, idx, onDelete }) {
+  const [{ isDragging }, drag] = useDrag({
+    type: 'ITEM',
+    item: { idx, imageUrl, title },
+    collect: (monitor) => ({
+      isDragging: monitor.isDragging(),
+    }),
+  });
+
+  // 슬라이드 상태 관리
+  const [slid, setSlid] = useState(false);
+
+  // DeleteArea 클릭 시 슬라이드
+  const handleDeleteAreaClick = (e) => {
+    e.stopPropagation();
+    setSlid(true);
+  };
+  // ItemWrap 클릭 시 슬라이드 해제 (삭제버튼 외 클릭 시)
+  const handleItemWrapClick = (e) => {
+    if (slid) {
+      setSlid(false);
+      e.stopPropagation();
+    }
+  };
+
+  // 삭제 버튼 클릭
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete?.(idx);
+  };
+
   return (
-    <ItemWrap $type={type} onClick={onClick}>
+    <ItemWrap
+      ref={drag}
+      $type={type}
+      $slid={slid}
+      style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }}
+      onClick={handleItemWrapClick}
+    >
       <ImgBox>
         {imageUrl && <Img src={imageUrl} alt="item" />}
       </ImgBox>
@@ -69,6 +137,10 @@ export default function Item({ imageUrl, title, type = 'default', onClick }) {
         <Title>{title}</Title>
         <Tag>#테스트</Tag>
       </InfoWrap>
+      <DeleteArea onClick={handleDeleteAreaClick} />
+      <DeleteBtn $show={slid} onClick={handleDelete}>
+        <Icons type="delete" size={24} color="#fff" />
+      </DeleteBtn>
     </ItemWrap>
   );
 }
