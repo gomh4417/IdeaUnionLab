@@ -34,7 +34,7 @@ export default function Header({ type = 'back', children, ...props }) {
   return (
     <HeaderContainer {...props}>
       <IconWrap>
-        <Icons type={type} size={24} />
+        <Icons type={type} size={24} color={theme.colors.gray[400]} />
       </IconWrap>
       <HeaderText>{children}</HeaderText>
     </HeaderContainer>
