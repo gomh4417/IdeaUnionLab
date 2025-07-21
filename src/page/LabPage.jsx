@@ -145,7 +145,7 @@ function LabPage() {
                 <img
                   src={`/dragdrop.gif?${gifKey}`}
                   alt="drag guide"
-                  style={{ width: 470, height: 220, marginBottom: 12 }}
+                  style={{ width: 470, height: 220, marginBottom: 12, opacity: 0.8 }}
                 />
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500], marginBottom: 4 }}>아이디어 선택하기</div>
