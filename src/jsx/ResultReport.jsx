@@ -68,19 +68,22 @@ const ReportTextWrap = styled.div`
 const ChipWrap = styled.div`
   display: flex;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   gap: 8px;
 `;
 
 const Chip = styled.span`
   background: ${({ $active, $brandcolor }) => $active ? `${$brandcolor}1A` : '#f6f6fb'};
-  padding: 4px 12px;
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
   border-radius: 8px;
   font-size: 12px;
   line-height: 160%;
   color: ${({ $active, $brandcolor }) => $active ? $brandcolor : '#a1a1a1'};
   transition: background 0.2s, color 0.2s;
   margin-left: -28px;
+  letter-spacing: 2px;
 `;
 
 const ChipLabel = styled.h4`
@@ -94,7 +97,7 @@ const ChipLabel = styled.h4`
 const StepTextWrap = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  
 `;
 
 const StepTitle = styled.h5`
@@ -102,6 +105,7 @@ const StepTitle = styled.h5`
   font-weight: 500;
   line-height: 24px;
   color: #333333;
+    margin-bottom: 8px;
 `;
 
 const StepContent = styled.h5`
@@ -110,7 +114,7 @@ const StepContent = styled.h5`
   line-height: 24px;
   letter-spacing: -2%;
   color: #555555;
-  margin-bottom: 8px;
+  margin-bottom: 20px;
 `;
 
 export default function ResultReport({ brandColor }) {
