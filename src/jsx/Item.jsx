@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { theme } from '../styles/theme';
 import { useDrag } from 'react-dnd';
 import Icons from '../jsx/Icons';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 
 const ItemWrap = styled.div`
   display: flex;
@@ -24,7 +24,7 @@ const DeleteArea = styled.div`
   position: absolute;
   right: 0;
   top: 0;
-  width: 80px;
+  width: 60px;
   height: 100%;
   z-index: 2;
   cursor: pointer;
@@ -91,7 +91,7 @@ const Tag = styled.div`
   letter-spacing: -0.02em;
 `;
 
-export default function Item({ imageUrl, title, type = 'default', onClick, idx, onDelete }) {
+export default function Item({ imageUrl, title, type = 'default', idx, onDelete }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
     item: { idx, imageUrl, title },

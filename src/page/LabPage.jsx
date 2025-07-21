@@ -8,7 +8,11 @@ import { theme } from '../styles/theme';
 import { useDrop } from 'react-dnd';
 import { useState, useEffect } from 'react';
 import Icons from '../jsx/Icons';
+
+
 import ActionBtn from '../jsx/ActionBtn';
+import DropItem from '../jsx/DropItem';
+import AdditiveBar from '../jsx/AdditiveBar';
 
 
 const LayoutWrap = styled.div`
@@ -41,6 +45,7 @@ const DropArea = styled.div`
   }
 `;
 
+
 function LabPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -52,6 +57,9 @@ function LabPage() {
   const [dropped, setDropped] = useState(false);
   const [isItemOver, setIsItemOver] = useState(false);
   const [activatedIdx, setActivatedIdx] = useState(null);
+  // AdditiveBar 관련 상태
+  const [selectedAdditive, setSelectedAdditive] = useState(null);
+  const [sliderValue, setSliderValue] = useState(0);
   // gif 반복 재생을 위한 key state
   const [gifKey, setGifKey] = useState(Date.now());
   useEffect(() => {
@@ -70,6 +78,8 @@ function LabPage() {
       if (activatedIdx === idx || newArr.length === 0) {
         setDropped(false);
         setActivatedIdx(null);
+        setSelectedAdditive(null);
+        setSliderValue(0);
       }
       return newArr;
     });
@@ -108,37 +118,54 @@ function LabPage() {
           setActivatedIdx={setActivatedIdx}
           onDeleteItem={handleDeleteItem}
         />
-        <DropArea
-          ref={drop}
-          className={isOver ? 'hover' : ''}
-          style={{ display: dropped ? 'none' : undefined }}
-        >
-          {/* 드래그 중이면 upload 아이콘만, 아니면 가이드 */}
-          {isItemOver ? (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <Icons type="upload" size={80} color={theme.colors.gray[400]} />
-            </div>
-          ) : (
-            <>
-              <img
-                src={`/dragdrop.gif?${gifKey}`}
-                alt="drag guide"
-                style={{ width: 470, height: 220, marginBottom: 12 }}
-              />
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500], marginBottom: 4 }}>아이디어 선택하기</div>
-                <div style={{ fontSize: 16, fontWeight: 400, color: theme.colors.gray[400] }}>리스트에서 아이디어를 드래그하여 이곳에 드롭해 주세요</div>
+        {/* 드롭 전에는 DropArea, 드롭 후에는 DropItem + AdditiveBar */}
+        {dropped && typeof activatedIdx === 'number' && items[activatedIdx] ? (
+          <>
+            <DropItem {...items[activatedIdx]} />
+            <AdditiveBar
+              selectedAdditive={selectedAdditive}
+              setSelectedAdditive={setSelectedAdditive}
+              sliderValue={sliderValue}
+              setSliderValue={setSliderValue}
+            />
+          </>
+        ) : (
+          <DropArea
+            ref={drop}
+            className={isOver ? 'hover' : ''}
+            style={{ display: dropped ? 'none' : undefined }}
+          >
+            {/* 드래그 중이면 upload 아이콘만, 아니면 가이드 */}
+            {isItemOver ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <Icons type="upload" size={80} color={theme.colors.gray[400]} />
               </div>
-            </>
-          )}
-        </DropArea>
+            ) : (
+              <>
+                <img
+                  src={`/dragdrop.gif?${gifKey}`}
+                  alt="drag guide"
+                  style={{ width: 470, height: 220, marginBottom: 12 }}
+                />
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500], marginBottom: 4 }}>아이디어 선택하기</div>
+                  <div style={{ fontSize: 16, fontWeight: 400, color: theme.colors.gray[400] }}>리스트에서 아이디어를 드래그하여 이곳에 드롭해 주세요</div>
+                </div>
+              </>
+            )}
+          </DropArea>
+        )}
       </ContentWrap>
       {dropped && (
         <ActionBtn
-          type="disabled"
+          type={selectedAdditive && sliderValue > 0 ? 'default' : 'disabled'}
           iconName="arrow_forward"
           title="실험하기"
-          onClick={() => navigate('/result')}
+          onClick={() => {
+            if (typeof activatedIdx === 'number' && items[activatedIdx]) {
+              navigate('/result', { state: { item: items[activatedIdx], additiveType: selectedAdditive } });
+            }
+          }}
           style={{ position: 'absolute', right: 32, bottom: 36 }}
         />
       )}

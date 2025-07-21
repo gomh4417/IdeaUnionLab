@@ -58,7 +58,7 @@ const BtnWrap = styled.div`
 
 const Btn = styled.button`
   width: 104px;
-  height: 45px;
+  height: 42px;
   border-radius: ${props => props.theme.radius.medium};
   background: ${({ $type, theme }) => $type === 'active' ? theme.colors.secondary : 'transparent'};
   color: ${({ $type, theme }) => $type === 'active' ? '#222' : theme.colors.gray[400]};
