@@ -1,5 +1,3 @@
-
-
 import { useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../jsx/Sidebar';
 import Header from '../jsx/Header';
@@ -163,7 +161,18 @@ function LabPage() {
           title="실험하기"
           onClick={() => {
             if (typeof activatedIdx === 'number' && items[activatedIdx]) {
-              navigate('/result', { state: { item: items[activatedIdx], additiveType: selectedAdditive } });
+              // Additive의 brand color hex값 추출
+              let brandColor = '#5755FE';
+              if (selectedAdditive) {
+                // 예시: Additive type에 따라 색상 매핑 (실제 프로젝트의 색상 매핑에 맞게 수정)
+                const colorMap = {
+                  creativity: '#5755FE',
+                  aesthetics: '#00CD80',
+                  usability: '#FD6B03',
+                };
+                brandColor = colorMap[selectedAdditive] || '#5755FE';
+              }
+              navigate('/result', { state: { item: items[activatedIdx], additiveType: selectedAdditive, brandColor } });
             }
           }}
           style={{ position: 'absolute', right: 32, bottom: 36 }}
