@@ -294,8 +294,8 @@ function CanvasPage() {
                   width: '100%',
                   gap: '4px',
                 }}>
-                  <img src="/draw.svg" alt="guide" width={215} height={146} style={{ marginBottom: 24 }} />
-                  <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500] }}>아이디어 작성하기</div>
+                  <img src="/draw.svg" alt="guide" width={275} height={186} style={{ marginBottom: 24, opacity: 0.5 }} />
+                  <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500], marginBottom: 4 }}>아이디어 작성하기</div>
                   <div style={{ fontSize: 16, fontWeight: 300, color: theme.colors.gray[400] }}>
                     하단의 도구를 활용하여 아이디어를 그림이나 이미지로 표현해주세요!
                   </div>
