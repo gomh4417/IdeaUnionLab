@@ -1,4 +1,3 @@
-// Firebase 설정 파일
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
@@ -11,7 +10,6 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FB_API_ID
 };
 
-// Firebase 설정 확인
 console.log('Firebase 설정 확인:', {
   hasApiKey: !!firebaseConfig.apiKey,
   hasAuthDomain: !!firebaseConfig.authDomain,
@@ -19,12 +17,9 @@ console.log('Firebase 설정 확인:', {
   projectId: firebaseConfig.projectId
 });
 
-// Firebase 앱 초기화
+
 const app = initializeApp(firebaseConfig);
 
-// Firestore 데이터베이스 초기화
 export const db = getFirestore(app);
-
-console.log('Firebase 초기화 완료');
 
 export default app;

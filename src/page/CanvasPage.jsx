@@ -152,7 +152,7 @@ function CanvasPage() {
   // URL state에서 프로젝트 ID 가져오기
   const projectId = location.state?.projectId;
   
-  // projectId가 없으면 홈으로 리다이렉트
+  // projectId가 없으면 홈으로 이동
   useEffect(() => {
     if (!projectId) {
       alert('프로젝트 정보가 없습니다. 홈화면에서 다시 시작해주세요.');
@@ -191,8 +191,8 @@ function CanvasPage() {
         {
           tool: activeTool,
           points: [pos.x, pos.y],
-          color: activeTool === 'eraser' ? '#fff' : penColor, // ✍️ 펜 색상 적용 위치
-          width: penWidth,                                    // ✍️ 펜 굵기 적용 위치
+          color: activeTool === 'eraser' ? '#fff' : penColor, //  펜 색상 적용 위치
+          width: penWidth,                                    //  펜 굵기 적용 위치
         },
       ]);
     }

@@ -23,7 +23,6 @@ const ContentWrap = styled.div`
 `;
 
 
-
 function ResultPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -77,11 +76,11 @@ function ResultPage() {
         if (isMounted) {
           // DALL-E 이미지 생성 결과에 따른 처리
           if (improvedInfoWithImage.imageGenerationSuccess === false) {
-            console.error('❌ DALL-E 이미지 생성 실패 감지');
-            console.error('❌ 오류 내용:', improvedInfoWithImage.imageGenerationError);
-            console.log('⚠️ 원본 이미지로 대체하지 않고 이미지 없는 상태로 처리');
+            console.error('DALL-E 이미지 생성 실패 감지');
+            console.error('오류 내용:', improvedInfoWithImage.imageGenerationError);
+            console.log('원본 이미지로 대체하지 않고 이미지 없는 상태로 처리');
           } else if (improvedInfoWithImage.imageUrl) {
-            console.log('✅ DALL-E 이미지 생성 성공, 새로운 이미지 사용');
+            console.log('DALL-E 이미지 생성 성공, 새로운 이미지 사용');
           }
 
           setImprovedIdea({
@@ -198,6 +197,7 @@ function ResultPage() {
         sourceExperimentId: experimentId, // 어떤 실험에서 생성되었는지 추적
         sourceIdeaId: ideaId, // 원본 아이디어 ID 참조
         additiveIntensity: additiveIntensity,
+        
         // DALL-E 관련 정보 저장
         ...(improvedIdea?.dalleGenerated && {
           dalleGenerated: true,
@@ -224,7 +224,7 @@ function ResultPage() {
       if (improvedIdea?.dalleGenerated) {
         successMessage = '실험 결과가 성공적으로 저장되었습니다!\nDALL-E 3로 생성된 새로운 제품 이미지와 함께 생성물 아이디어가 추가되었습니다.';
       } else if (improvedIdea?.dalleError) {
-        successMessage = '실험 결과가 저장되었습니다.\n⚠️ DALL-E 이미지 생성에 실패하여 원본 이미지를 사용했습니다.\n생성물 아이디어가 추가되었습니다.';
+        successMessage = '실험 결과가 저장되었습니다.\n DALL-E 이미지 생성에 실패하여 원본 이미지를 사용했습니다.\n생성물 아이디어가 추가되었습니다.';
         console.log('⚠️ DALL-E 생성 실패로 원본 이미지 사용:', improvedIdea.dalleError);
       } else {
         successMessage = '실험 결과가 성공적으로 저장되었습니다!\n생성물 아이디어가 새로 추가되었습니다.';

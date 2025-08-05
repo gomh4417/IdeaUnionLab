@@ -1,13 +1,8 @@
-// GPT API 호출 유틸리티 함수들
-
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const API_URL = "https://api.openai.com/v1/chat/completions";
 
 // 슬라이더 값을 Temperature로 변환
 const getTemperatureFromSlider = (sliderValue) => {
-  // 0: 0.3 (적게 - 예측 가능하고 일관된 응답)
-  // 1: 0.7 (적당히 - 균형잡힌 창의성)
-  // 2: 1.0 (많이 - 높은 창의성과 변수)
   const temperatureMap = {
     0: 0.3,
     1: 0.7,
@@ -16,7 +11,7 @@ const getTemperatureFromSlider = (sliderValue) => {
   return temperatureMap[sliderValue] || 0.7;
 };
 
-// 공통 프롬프트 템플릿
+// 공통 프롬프트
 const VISION_PROMPT = `당신은 제품 디자인 전문가입니다.
 제공된 이미지를 분석하여 시각적 정보를 텍스트로 설명하세요. 
 
@@ -31,7 +26,7 @@ const VISION_PROMPT = `당신은 제품 디자인 전문가입니다.
 - 최대 5줄 이내의 간결한 텍스트로 작성합니다.
 - JSON이나 코드 블록 없이 순수 텍스트만 출력합니다.`;
 
-// 첨가제별 프롬프트 템플릿
+// 창의성 첨가제 프롬프트
 const ADDITIVE_PROMPTS = {
   creativity: (ideaTitle, ideaDescription, visionResult) => `당신은 제품 디자인 전문가이자 TRIZ 창의적 문제 해결 기법 전문가입니다. 
 다음 정보를 기반으로 사용자의 아이디어를 분석하고, 4단계로 나눈 상세한 JSON을 작성하세요.
@@ -94,6 +89,8 @@ ${visionResult}
 9. **중요: JSON이 완전한 형태로 닫혀야 합니다. 모든 중괄호와 대괄호가 올바르게 닫혀있는지 확인하세요.**
 10. **Step 3에는 반드시 "subSteps" 배열이 있어야 하며, 3개의 객체가 포함되어야 합니다.**`,
 
+
+// 심미성 첨가제 프롬프트
   aesthetics: (ideaTitle, ideaDescription, visionResult, referenceResult) => `당신은 제품 디자인 전문가이자 사례 기반 추론(Schema)과 심미성 분석 전문가입니다. 
 다음 정보를 기반으로 사용자의 아이디어를 분석하고, 4단계로 나눈 상세한 JSON을 작성하세요.
 
@@ -156,6 +153,8 @@ ${referenceResult}
 7. 응답에 자신을 지칭하는 표현(예: "저는", "제가")은 사용하지 마세요.
 8. JSON 외의 다른 텍스트는 포함하지 마세요.`,
 
+
+// 사용성 첨가제 프롬프트
   usability: (ideaTitle, ideaDescription, visionResult) => `당신은 제품 디자인 전문가이자 사용성(Task Analysis) 분석 전문가입니다. 
 다음 정보를 기반으로 사용자의 아이디어를 분석하고, 4단계로 나눈 상세한 JSON을 작성하세요.
 
@@ -208,7 +207,7 @@ ${visionResult}
 7. descriptions의 각 항목은 독립적인 문자열이며, 객체가 아닙니다.`
 };
 
-// Vision API 호출 (이미지 분석) - GPT-4o 사용
+// Vision API 호출 (이미지 분석)
 export async function analyzeImageWithVision(imageUrl) {
     try {
         console.log('Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
@@ -220,7 +219,7 @@ export async function analyzeImageWithVision(imageUrl) {
             "Authorization": `Bearer ${API_KEY}`,
         },
         body: JSON.stringify({
-            model: "gpt-4o", // Vision 지원 모델
+            model: "gpt-4o", 
             messages: [
             {
                 role: "system",
@@ -251,7 +250,7 @@ export async function analyzeImageWithVision(imageUrl) {
     }
 }
 
-// GPT-4o-mini로 아이디어 분석 (텍스트 처리)
+// 아이디어 분석 (텍스트 처리)
 export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDescription, visionResult, referenceResult = null, sliderValue = 1) {
     try {
         console.log('아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
@@ -274,7 +273,7 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
         "Authorization": `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini", // 비용 효율적인 모델
+        model: "gpt-4o-mini", 
         messages: [
           { 
             role: "system", 
@@ -285,7 +284,7 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
             content: prompt 
           }
         ],
-        max_tokens: 3000, // 토큰 수 증가
+        max_tokens: 3000, 
         temperature: temperature, // 슬라이더 값에 따른 동적 Temperature
       }),
     });
@@ -314,7 +313,7 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
       
       console.log('JSON 파싱 성공, 구조 검증 시작...');
       
-      // 응답 구조 검증
+      // 구조 검증
       if (!result.steps || !Array.isArray(result.steps) || result.steps.length !== 4) {
         if (process.env.NODE_ENV === 'development') {
           console.error('응답 구조 오류:', {
@@ -446,7 +445,7 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
         
         // 다시 파싱 시도
         const recoveredResult = JSON.parse(fixedJson);
-        console.log('JSON 복구 성공');
+        console.log('JSON 파싱 오류 디버깅');
         
         // 기본 구조 검증 및 보정
         if (!recoveredResult.steps || !Array.isArray(recoveredResult.steps)) {
@@ -517,7 +516,7 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
   }
 }
 
-// 레퍼런스 이미지 분석 (심미성 첨가제용)
+// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API)
 export async function analyzeReferenceImage(imageUrl) {
   try {
     console.log('레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
@@ -529,7 +528,7 @@ export async function analyzeReferenceImage(imageUrl) {
         "Authorization": `Bearer ${API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o", // Vision 지원 모델
+        model: "gpt-4o", 
         messages: [
           {
             role: "system",
@@ -629,7 +628,7 @@ ${visionAnalysis}
   }
 }
 
-// Step 1-4 인사이트를 바탕으로 최종 개선된 제품 정보 생성
+// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성
 export async function generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType) {
   try {
     console.log('개선된 제품 정보 생성 중...');

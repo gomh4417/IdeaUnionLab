@@ -114,7 +114,7 @@ export default function Item({ imageUrl, title, type = 'default', idx, onDelete,
     e.stopPropagation();
     setSlid(true);
   };
-  // ItemWrap 클릭 시 슬라이드 해제 (삭제버튼 외 클릭 시)
+  // ItemWrap 클릭 시 슬라이드 해제
   const handleItemWrapClick = (e) => {
     if (slid) {
       setSlid(false);

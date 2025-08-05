@@ -202,7 +202,7 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
     if (!isEditing) return; // 편집 모드가 아니면 키 입력 무시
     
     e.stopPropagation(); // 이벤트 전파 방지
-    // 키보드 저장 기능 제거 - 태블릿 사용을 위해
+    
     if (e.key === 'Escape') {
       setIsEditing(false); // ESC 키로 취소
       setEditValue(projectName || ''); // 원래 값으로 복원
@@ -215,7 +215,7 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
   };
 
   const handleInputChange = (e) => {
-    if (!isEditing) return; // 편집 모드가 아니면 변경 무시
+    if (!isEditing) return; 
     setEditValue(e.target.value);
   };
 
@@ -224,15 +224,15 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
     const length = editValue.length;
     const minWidth = 100;
     const maxWidth = 400;
-    const charWidth = 8.5; // 좀 더 정확한 문자당 픽셀 (한글 고려)
-    const padding = isEditing ? 20 : 0; // 편집 모드일 때 패딩 고려
+    const charWidth = 8.5; 
+    const padding = isEditing ? 16 : 0; 
     
     const calculatedWidth = Math.max(minWidth, length * charWidth + padding);
     return Math.min(calculatedWidth, maxWidth);
   };
 
   const handleIconClick = (e) => {
-    e.stopPropagation(); // 이벤트 전파 방지
+    e.stopPropagation(); 
     if (onClick) {
       onClick();
     }

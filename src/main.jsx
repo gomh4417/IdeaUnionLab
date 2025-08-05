@@ -24,6 +24,7 @@ import ResultPage from './page/ResultPage'
 import CanvasPage from './page/CanvasPage'
 
 const AppWrapper = ({ children }) => {
+  
   // 개발 환경에서만 StrictMode 사용
   if (process.env.NODE_ENV === 'development') {
     return <StrictMode>{children}</StrictMode>;

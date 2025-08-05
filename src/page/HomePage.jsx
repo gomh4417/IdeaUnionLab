@@ -9,37 +9,37 @@ import StartButton from '../jsx/StartButton';
 import ProjectList from '../jsx/ProjectList';
 
 const HomePageContainer = styled.div`
-  position: relative;
-  width: 1194px;
-  height: 834px;
-  margin: 0 auto;
-  z-index: 1;
-  
-  /* 배경 이미지를 pseudo-element로 처리 */
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image: url('/home_background.png');
-    background-size: 1194px 834px;
-    background-position: center;
-    background-repeat: no-repeat;
-    z-index: -1;
-    pointer-events: none;
-  }
+    position: relative;
+    width: 1194px;
+    height: 834px;
+    margin: 0 auto;
+    z-index: 1;
+    
+    /* 배경 이미지를 pseudo-element로 처리 */
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: url('/home_background.png');
+        background-size: 1194px 834px;
+        background-position: center;
+        background-repeat: no-repeat;
+        z-index: -1;
+        pointer-events: none;
+    }
 `;
 
 const ContentWrapper = styled.div`
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  pointer-events: auto;
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    pointer-events: auto;
 `;
 
 function HomePage() {

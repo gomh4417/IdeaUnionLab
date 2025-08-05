@@ -38,7 +38,7 @@ const EmptyStateWrapper = styled.div`
 
 export default function ProjectList() {
   const [projects, setProjects] = useState([]);
-  const [focusIdx, setFocusIdx] = useState(0); // ✅ 첫 번째 아이템 초기 포커스
+  const [focusIdx, setFocusIdx] = useState(0); // 첫 번째 아이템 초기 포커스
   const controls = useAnimation();
   const location = useLocation();
   const trackRef = useRef(null);
@@ -48,7 +48,7 @@ export default function ProjectList() {
   const TOTAL_ITEM_WIDTH = ITEM_WIDTH + ITEM_GAP;
   const FOCUS_SCALE = 1.05;
 
-  // ✅ Firestore에서 프로젝트 실시간 로드 (onSnapshot 사용)
+  // Firestore에서 프로젝트 실시간 로드 (onSnapshot 사용)
   const subscribeToProjects = () => {
     try {
       const unsubscribe = onSnapshot(collection(db, 'projects'), (snapshot) => {
@@ -83,7 +83,7 @@ export default function ProjectList() {
     };
   }, [location.pathname]);
 
-  // ✅ 중앙 offset 계산
+  // 중앙 offset 계산
   const calculateOffset = (index) => {
     const container = document.querySelector('.kiWIK'); // HomePage 컨테이너
     const containerWidth = container?.offsetWidth || 1194;
@@ -92,7 +92,7 @@ export default function ProjectList() {
     return containerWidth / 2 - focusedItemPosition;
   };
 
-  // ✅ 첫 로드 시 위치 즉시 설정 (애니메이션 없이)
+  // 첫 로드 시 위치 즉시 설정
   useEffect(() => {
     if (projects.length > 0) {
       const initialOffset = calculateOffset(0); // 첫 번째 아이템 기준
@@ -100,7 +100,7 @@ export default function ProjectList() {
     }
   }, [projects.length]);
 
-  // ✅ focusIdx 변경 시 애니메이션 적용
+  // focusIdx 변경 시 애니메이션 적용
   useEffect(() => {
     if (projects.length > 0) {
       const offset = calculateOffset(focusIdx);
@@ -111,7 +111,7 @@ export default function ProjectList() {
     }
   }, [focusIdx]);
 
-  // ✅ 아이템 클릭 시 포커스 이동
+  // 아이템 클릭 시 포커스 이동
   const handleItemClick = (clickedIdx) => {
     if (clickedIdx !== focusIdx) {
       setFocusIdx(clickedIdx);
@@ -130,7 +130,7 @@ export default function ProjectList() {
               <motion.div
                 key={item.id}
                 style={{
-                  transformOrigin: 'center center', // ✅ 포커스 시 중앙 기준
+                  transformOrigin: 'center center', // 포커스 시 중앙 기준
                   scale: isFocused ? FOCUS_SCALE : 1,
                   transition: 'scale 0.3s ease',
                 }}

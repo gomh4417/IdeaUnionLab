@@ -1,7 +1,4 @@
 import React from 'react';
-
-// type: 'back' | 'home' | 'add' | 'pen' | 'eraser' | 'image' | 'dots' | 'undo' | 'upload' | 'edit' | 'save' | 'settings'
-// 구글 머티리얼 아이콘 폰트 기반으로 렌더링
 const typeToIconName = {
   back: 'arrow_back',
   home: 'home',

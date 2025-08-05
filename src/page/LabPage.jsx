@@ -409,7 +409,7 @@ function LabPage() {
                     tags: currentIdea.tags || []
                   },
                   status: 'processing', // 'processing' -> 'completed'
-                  result: null, // GPT 응답이 여기에 저장됨
+                  result: null, // GPT 응답이 저장되는 위치
                   createdAt: new Date(),
                   updatedAt: new Date()
                 };
