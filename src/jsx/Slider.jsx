@@ -70,7 +70,7 @@ const StepArea = styled.div`
   z-index: 1;
 `;
 
-export default function Slider({ value = 0, onChange, type = 'creativity' }) {
+export default function Slider({ type = 'creativity', value = 0, onChange, onTouch }) {
   const [dragging, setDragging] = useState(false);
   const [internalValue, setInternalValue] = useState(value);
   const trackRef = useRef(null);
@@ -79,6 +79,7 @@ export default function Slider({ value = 0, onChange, type = 'creativity' }) {
   const commitValue = (val) => {
     setInternalValue(val);
     if (onChange) onChange(val);
+    if (onTouch) onTouch(); // 슬라이더 터치 이벤트 발생
   };
 
   // Mouse/touch drag logic
@@ -89,6 +90,7 @@ export default function Slider({ value = 0, onChange, type = 'creativity' }) {
   const handlePointerUp = () => {
     setDragging(false);
     if (onChange) onChange(internalValue);
+    if (onTouch) onTouch(); // 드래그 종료 시에도 터치 이벤트 발생
   };
   const handlePointerMove = (e) => {
     if (!dragging) return;

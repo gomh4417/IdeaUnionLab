@@ -91,24 +91,52 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar({ projects = [], activatedIdx, setActivatedIdx, onDeleteItem }) {
+export default function Sidebar({ projects = [], activatedIdx, setActivatedIdx, onDeleteItem, projectId }) {
   const [active, setActive] = useState('raw');
   const navigate = useNavigate();
+  
+  // 활성 탭에 따라 아이디어 필터링
+  const filteredProjects = projects.filter(project => {
+    if (active === 'raw') {
+      // 원재료: ID가 "idea_"로 시작하는 것들 (result_idea_ 제외)
+      return project.id?.startsWith('idea_') && !project.id?.startsWith('result_idea_');
+    } else {
+      // 생성물: ID가 "result_idea_"로 시작하는 것들
+      return project.id?.startsWith('result_idea_');
+    }
+  });
+  
+  // 현재 활성화된 아이템이 현재 탭에 있는지 확인
+  const activeItemInCurrentTab = activatedIdx !== null && activatedIdx < projects.length ? 
+    filteredProjects.some(item => item.id === projects[activatedIdx]?.id) : false;
+  
+  // 필터링된 배열에서 활성화된 아이템의 인덱스 찾기
+  const getFilteredActiveIndex = () => {
+    if (!activeItemInCurrentTab || activatedIdx === null) return null;
+    const activeItem = projects[activatedIdx];
+    return filteredProjects.findIndex(item => item.id === activeItem?.id);
+  };
+  
   return (
     <ThemeProvider theme={theme}>
       <SidebarContainer>
         <BtnToggle active={active} onChange={setActive} />
         <Divider />
         {active === 'raw' && (
-          <AddItemWrap onClick={() => navigate('/write')}>
+          <AddItemWrap onClick={() => navigate('/write', { state: { projectId } })}>
             <AddBox>
               <Icons type="add" size={12} color={theme.colors.gray[500]} />
             </AddBox>
             <AddText>원재료 추가하기</AddText>
           </AddItemWrap>
         )}
-        {/* ItemList로 프로젝트 리스트 렌더링 */}
-        <ItemList items={projects} activatedIdx={activatedIdx} onDeleteItem={onDeleteItem} />
+        {/* 필터링된 아이디어 리스트 렌더링 */}
+        <ItemList 
+          items={filteredProjects} 
+          activatedIdx={getFilteredActiveIndex()} 
+          onDeleteItem={onDeleteItem} 
+          originalItems={projects} // 원본 배열도 전달 (인덱스 매칭용)
+        />
       </SidebarContainer>
     </ThemeProvider>
   );

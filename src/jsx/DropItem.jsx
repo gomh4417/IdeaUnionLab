@@ -107,9 +107,11 @@ const Content = styled.div`
 
 
 
-// DropItem: { title, imageUrl, content, type, additiveType } props로 받음
+// DropItem: { title, imageUrl, content, type, additiveType, pageType } props로 받음
+// type: 'original' (원재료) | 'result' (생성물)
+// pageType: 'lab' | 'result' - 페이지에 따른 레이아웃 변경
 // generation: 1, 2, 3, ... (default 1)
-export default function DropItem({ title, imageUrl, content, type, additiveType, generation = 1 }) {
+export default function DropItem({ title, imageUrl, content, type, additiveType, generation = 1, pageType = 'lab' }) {
   const theme = useTheme();
   let brandColor = theme.colors.brand[1];
   if (additiveType) {
@@ -118,9 +120,14 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
   }
 
   const isResult = type === 'result';
+  const isOriginal = type === 'original';
+  const isLabPage = pageType === 'lab';
+  const isResultPage = pageType === 'result';
+  
   return (
     <Container $isresult={isResult}>
-      {type === 'result' && (
+      {/* ResultPage: 생성물이고 additiveType이 있는 경우 Image 위에 chip 표시 */}
+      {isResultPage && isResult && additiveType && (
         <ChipRow>
           <Chip $brandcolor={brandColor}>
             <ChipIcon src={ICONS[additiveType] || ICONS['creativity']} alt="icon" />
@@ -131,11 +138,23 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
           </ChipLabel>
         </ChipRow>
       )}
+      
       {imageUrl && (
         <ImgContainer>
           <Image src={imageUrl} alt={title} />
         </ImgContainer>
       )}
+
+      {/* LabPage: 생성물이고 additiveType이 있는 경우 Title 위에 chip 표시 */}
+      {isLabPage && isResult && additiveType && (
+        <ChipRow>
+          <Chip $brandcolor={brandColor}>
+            <ChipIcon src={ICONS[additiveType] || ICONS['creativity']} alt="icon" />
+            <ChipText $brandcolor={brandColor}>{generation}차 생성물</ChipText>
+          </Chip>
+        </ChipRow>
+      )}
+      
       <Title>{title}</Title>
       <Content>{content}</Content>
     </Container>

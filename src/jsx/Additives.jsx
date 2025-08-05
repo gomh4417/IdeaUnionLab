@@ -105,7 +105,7 @@ const ExpandImg = styled.img`
     object-fit: contain;
 `;
 
-export default function Additives({ type, active, onClick }) {
+export default function Additives({ type, active, onClick, referenceImage, setReferenceImage }) {
     const [uploadedImg, setUploadedImg] = useState(null);
     const fileInputRef = useRef();
 
@@ -120,7 +120,12 @@ export default function Additives({ type, active, onClick }) {
         }
         const reader = new FileReader();
         reader.onload = (ev) => {
-            setUploadedImg(ev.target.result);
+            const imageData = ev.target.result;
+            setUploadedImg(imageData);
+            // 심미성 첨가제일 때만 부모 상태 업데이트
+            if (type === 'aesthetics' && setReferenceImage) {
+                setReferenceImage(imageData);
+            }
         };
         reader.readAsDataURL(file);
     };

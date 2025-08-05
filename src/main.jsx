@@ -23,8 +23,16 @@ import LabPage from './page/LabPage'
 import ResultPage from './page/ResultPage'
 import CanvasPage from './page/CanvasPage'
 
+const AppWrapper = ({ children }) => {
+  // 개발 환경에서만 StrictMode 사용
+  if (process.env.NODE_ENV === 'development') {
+    return <StrictMode>{children}</StrictMode>;
+  }
+  return children;
+};
+
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
+  <AppWrapper>
     <DndProvider backend={HTML5Backend}>
       <ThemeProvider theme={theme}>
         <Wrapper>
@@ -39,5 +47,5 @@ createRoot(document.getElementById('root')).render(
         </Wrapper>
       </ThemeProvider>
     </DndProvider>
-  </StrictMode>
+  </AppWrapper>
 )

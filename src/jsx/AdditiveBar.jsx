@@ -1,5 +1,6 @@
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
+import { useEffect } from 'react';
 
 import AdditiveList from './AdditiveList';
 import Slider from './Slider';
@@ -48,15 +49,42 @@ const Guide = styled.div`
   color: ${theme.colors.gray[600]};
 `;
 
-export default function AdditiveBar({ selectedAdditive, setSelectedAdditive, sliderValue, setSliderValue }) {
+export default function AdditiveBar({ 
+  selectedAdditive, 
+  setSelectedAdditive, 
+  sliderValue, 
+  setSliderValue, 
+  sliderTouched,
+  setSliderTouched,
+  referenceImage, 
+  setReferenceImage 
+}) {
+  // 레퍼런스 이미지 상태 변화 감지 (중복 로그 방지)
+  useEffect(() => {
+    // 빈 값이나 null에서 실제 이미지로 변할 때만 로그 출력
+    if (process.env.NODE_ENV === 'development' && referenceImage && referenceImage.startsWith('data:image')) {
+      console.log('AdditiveBar - referenceImage 업로드됨');
+    }
+  }, [referenceImage]);
+
   return (
     <BarContainer>
       <Title>첨가제 선택</Title>
-      <AdditiveList selectedAdditive={selectedAdditive} setSelectedAdditive={setSelectedAdditive} />
+      <AdditiveList 
+        selectedAdditive={selectedAdditive} 
+        setSelectedAdditive={setSelectedAdditive}
+        referenceImage={referenceImage}
+        setReferenceImage={setReferenceImage}
+      />
       <ControlWrap>
         <SubTitle>첨가제를 얼마나 넣을까요?</SubTitle>
         <Guide>아이디어의 변형 강도를 정할 수 있어요</Guide>
-        <Slider type={selectedAdditive || 'creativity'} value={sliderValue} onChange={setSliderValue} />
+        <Slider 
+          type={selectedAdditive || 'creativity'} 
+          value={sliderValue} 
+          onChange={setSliderValue}
+          onTouch={() => setSliderTouched(true)}
+        />
       </ControlWrap>
     </BarContainer>
   );

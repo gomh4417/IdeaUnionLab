@@ -1,11 +1,14 @@
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
+import { getNextIdWithCounter } from '../utils/firebaseCounter';
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
+import { analyzeImageWithVision, generateProductTag } from '../utils/gptApi';
 
 import Header from '../jsx/Header';
 import ActionBtn from '../jsx/ActionBtn';
-
 
 import { Stage, Layer, Line, Image as KonvaImage } from 'react-konva';
 import useImage from 'use-image';
@@ -143,6 +146,20 @@ const PEN_WIDTHS = [2, 4, 6, 8]; // 펜 굵기 옵션
 
 function CanvasPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  
+  // URL state에서 프로젝트 ID 가져오기
+  const projectId = location.state?.projectId;
+  
+  // projectId가 없으면 홈으로 리다이렉트
+  useEffect(() => {
+    if (!projectId) {
+      alert('프로젝트 정보가 없습니다. 홈화면에서 다시 시작해주세요.');
+      navigate('/');
+    }
+  }, [projectId, navigate]);
+  
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [activeTool, setActiveTool] = useState('pen');
@@ -158,8 +175,6 @@ function CanvasPage() {
   const fileInputRef = useRef();
   const stageRef = useRef();
   const [konvaImage] = useImage(imageUrl);
-  // 프로젝트 임시 배열 (로컬)
-  const [projects, setProjects] = useState([]);
 
   // 캔버스 이미지를 dataURL로 변환
   const getCanvasImageUrl = () => {
@@ -218,7 +233,7 @@ function CanvasPage() {
   return (
     <OuterWrap>
       <Container>
-        <Header type="back" onClick={() => navigate('/lab')}>공공디자인 아이디어</Header>
+        <Header type="back" onClick={() => navigate('/lab', { state: { projectId } })}>공공디자인 아이디어</Header>
         <MainLayout>
           <LeftCon>
             <TitleInput
@@ -329,30 +344,92 @@ function CanvasPage() {
         </ToolBarWrap>
           
           <ActionBtn
-            type="default"
+            type={loading ? "disabled" : "default"}
             iconName="add"
-            title="추가하기"
-            onClick={() => {
+            title={loading ? "저장 중..." : "추가하기"}
+            onClick={async () => {
               const isCanvasEmpty = (!lines || lines.length === 0) && !imageUrl;
               if (!title || !content || isCanvasEmpty) {
                 alert('아이디어를 전부 작성해주세요!');
                 return;
               }
-              const canvasImageUrl = getCanvasImageUrl();
-              const newProject = {
-                title,
-                content,
-                imageUrl: canvasImageUrl,
-                date: new Date().toISOString().slice(0, 10),
-              };
-              setProjects(prev => {
-                const nextProjects = [...prev, newProject];
-                navigate('/lab', { state: { projects: nextProjects } });
-                return nextProjects;
-              });
-            }}
-          />
+              
+              if (!projectId) {
+                alert('프로젝트 정보가 없습니다. 홈화면에서 다시 시작해주세요.');
+                navigate('/');
+                return;
+              }
 
+              try {
+                console.log('저장 시작:', { projectId, title, content });
+                setLoading(true);
+                
+                const canvasImageUrl = getCanvasImageUrl();
+                console.log('캔버스 이미지 생성 완료');
+                
+                // Vision API로 이미지 분석
+                let visionAnalysis = null;
+                let productTag = "#생활용품"; // 기본 태그
+                if (canvasImageUrl) {
+                  try {
+                    console.log('이미지 분석 시작...');
+                    visionAnalysis = await analyzeImageWithVision(canvasImageUrl);
+                    console.log('이미지 분석 완료:', visionAnalysis);
+                    
+                    // Vision 분석 결과를 바탕으로 제품 태그 생성
+                    if (visionAnalysis && visionAnalysis !== '이미지 분석을 수행할 수 없습니다.') {
+                      try {
+                        productTag = await generateProductTag(visionAnalysis);
+                      } catch (tagError) {
+                        console.error('태그 생성 실패:', tagError);
+                        productTag = "#생활용품";
+                      }
+                    }
+                  } catch (visionError) {
+                    console.error('이미지 분석 실패:', visionError);
+                    // 이미지 분석 실패해도 아이디어는 저장
+                    visionAnalysis = '이미지 분석을 수행할 수 없습니다.';
+                    productTag = "#생활용품";
+                  }
+                }
+                
+                // 카운터를 사용한 효율적인 아이디어 ID 생성
+                const { id: ideaId } = await getNextIdWithCounter(
+                  `counters/projects/${projectId}/ideas`, 
+                  'idea'
+                );
+                
+                console.log('생성될 아이디어 ID:', ideaId);
+                
+                // 개선된 아이디어 데이터 구조 (visionAnalysis 및 생성된 태그 추가)
+                const ideaData = {
+                  id: ideaId,
+                  title: title || "제목 없음",
+                  description: content || "설명 없음",
+                  imageUrl: canvasImageUrl || "",
+                  visionAnalysis: visionAnalysis, // Vision API 분석 결과 추가
+                  tags: [productTag], // Vision 분석 기반 생성된 제품 태그
+                  type: "original", // 원본 아이디어임을 표시
+                  createdAt: new Date(),
+                };
+                
+                // Firebase에 아이디어 저장
+                await setDoc(doc(db, "projects", projectId, "ideas", ideaId), ideaData);
+                
+                console.log('아이디어 저장 완료:', ideaData);
+                
+                // 저장 후 LabPage로 이동
+                navigate('/lab', { state: { projectId } });
+              } catch (error) {
+                console.error('아이디어 저장 실패:', error);
+                alert(`아이디어 저장 중 오류가 발생했습니다: ${error.message}`);
+              } finally {
+                setLoading(false);
+              }
+            }}
+            style={{ position: 'absolute', right: 32, bottom: 36 }}
+            disabled={loading}
+          />
       </Container>
     </OuterWrap>
   );

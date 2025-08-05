@@ -91,13 +91,19 @@ const Tag = styled.div`
   letter-spacing: -0.02em;
 `;
 
-export default function Item({ imageUrl, title, type = 'default', idx, onDelete }) {
+export default function Item({ imageUrl, title, type = 'default', idx, onDelete, tags = [], itemData }) {
   const [{ isDragging }, drag] = useDrag({
     type: 'ITEM',
-    item: { idx, imageUrl, title },
+    item: { 
+      idx, 
+      imageUrl, 
+      title,
+      itemData // 전체 아이디어 데이터 포함
+    },
     collect: (monitor) => ({
       isDragging: monitor.isDragging(),
     }),
+    canDrag: () => true, // 항상 드래그 가능하도록 설정
   });
 
   // 슬라이드 상태 관리
@@ -127,7 +133,10 @@ export default function Item({ imageUrl, title, type = 'default', idx, onDelete 
       ref={drag}
       $type={type}
       $slid={slid}
-      style={{ opacity: isDragging ? 0.5 : 1, cursor: 'grab' }}
+      style={{ 
+        opacity: isDragging ? 0.5 : 1, 
+        cursor: isDragging ? 'grabbing' : 'grab' 
+      }}
       onClick={handleItemWrapClick}
     >
       <ImgBox>
@@ -135,7 +144,7 @@ export default function Item({ imageUrl, title, type = 'default', idx, onDelete 
       </ImgBox>
       <InfoWrap>
         <Title>{title}</Title>
-        <Tag>#테스트</Tag>
+        <Tag>{tags && tags.length > 0 ? tags[0] : '#생활용품'}</Tag>
       </InfoWrap>
       <DeleteArea onClick={handleDeleteAreaClick} />
       <DeleteBtn $show={slid} onClick={handleDelete}>
