@@ -1,10 +1,10 @@
 # Firebase Firestore 데이터베이스 사용 가이드
 
-## 🔥 Firebase 설정 완료
+## Firebase 설정 완료
 
 IdeaUnionLab 프로젝트에 Firebase Firestore 데이터베이스가 성공적으로 통합되었습니다.
 
-## 📁 데이터베이스 구조
+## 데이터베이스 구조
 
 ```
 projects (컬렉션)
@@ -38,7 +38,7 @@ projects (컬렉션)
                     └─ createdAt: timestamp
 ```
 
-## 🛠️ 생성된 파일들
+## 생성된 파일들
 
 ### 1. Firebase 설정
 - `src/firebase.js` - Firebase 초기화 설정
@@ -54,7 +54,7 @@ projects (컬렉션)
 ### 4. 예시 컴포넌트
 - `src/components/FirebaseExampleUsage.jsx` - 사용법 예시
 
-## 🚀 사용 방법
+## 사용 방법
 
 ### 1. 기본 사용법
 
@@ -152,7 +152,7 @@ const ExperimentComponent = () => {
 };
 ```
 
-## 🔑 ID 생성 규칙
+## ID 생성 규칙
 
 - **프로젝트 ID**: `proj_001`, `proj_002`, ...
 - **아이디어 ID**: `idea_001`, `idea_002`, ...
@@ -160,13 +160,13 @@ const ExperimentComponent = () => {
 
 ID는 자동으로 순차적으로 생성되며, 직접 지정한 형식을 따릅니다.
 
-## ⚠️ 주의사항
+## 주의사항
 
 1. **이미지 크기**: 모든 이미지는 1MB 이하로 제한됩니다.
 2. **환경변수**: `.env` 파일이 프로젝트 루트에 있어야 합니다.
 3. **Firebase 규칙**: Firestore 보안 규칙을 적절히 설정해주세요.
 
-## 🧪 테스트
+## 테스트
 
 Firebase 연동을 테스트하려면:
 
@@ -174,7 +174,7 @@ Firebase 연동을 테스트하려면:
 2. 브라우저에서 `FirebaseExampleUsage` 컴포넌트 확인
 3. 콘솔에서 데이터 생성/조회 테스트
 
-## 📚 추가 리소스
+## 추가 리소스
 
 - [Firebase 문서](https://firebase.google.com/docs)
 - [Firestore 가이드](https://firebase.google.com/docs/firestore)
