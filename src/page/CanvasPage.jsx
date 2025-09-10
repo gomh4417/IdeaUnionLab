@@ -9,7 +9,7 @@ import {
   generateProductTag,
   generateRandomIdea,
   generateImage,
-} from '../utils/gptApi';
+} from '../utils/Aiapi';
 import { uploadCanvasImage, uploadIflImage } from '../utils/firebaseStorage';
 import styled from 'styled-components';
 import { theme } from '../styles/theme';

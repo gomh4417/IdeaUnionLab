@@ -1,7 +1,11 @@
-const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
+const API_KEY = import.meta.env.VITE_OPENAI_API_KEY; // 기존 키 유지 (fallback용)
 const API_URL = "https://api.openai.com/v1/chat/completions";
-const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY;
+const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY; // 기존 키 유지 (fallback용)
 const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3";
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
+const GEMINI_TEXT_MODEL = "gemini-2.0-pro";
+const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
 
 // =============================================================================
 
@@ -115,6 +119,206 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
   { keywords: ['white background', 'clean background'], replacement: 'clean white background' },
   { keywords: ['studio lighting'], replacement: 'studio lighting' }
 ];
+
+// =============================================================================
+// GEMINI API 헬퍼 함수들
+// =============================================================================
+
+/**
+ * Gemini API로 텍스트 생성 (JSON 강제)
+ * @param {string} prompt - 프롬프트 텍스트
+ * @param {Object} schema - JSON 스키마 (선택사항)
+ * @param {number} temperature - 온도 (0.0-2.0)
+ * @param {number} maxTokens - 최대 토큰 수
+ * @returns {Promise<string>} 생성된 텍스트
+ */
+async function callGeminiTextAPI(prompt, schema = null, temperature = 0.7, maxTokens = 2048) {
+  try {
+    console.log('🔮 Gemini Text API 호출 시작');
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    }
+
+    const requestBody = {
+      contents: [{
+        parts: [{
+          text: prompt
+        }]
+      }],
+      generationConfig: {
+        temperature: temperature,
+        maxOutputTokens: maxTokens,
+        topP: 0.8,
+        topK: 40
+      }
+    };
+
+    // JSON 스키마가 있으면 JSON 응답 강제
+    if (schema) {
+      requestBody.generationConfig.responseMimeType = "application/json";
+      // 간단한 스키마 문자열 추가 (Gemini는 복잡한 스키마를 지원하지 않으므로)
+      prompt += "\n\n응답은 반드시 유효한 JSON 형식으로만 출력하세요. 다른 텍스트나 설명은 포함하지 마세요.";
+      requestBody.contents[0].parts[0].text = prompt;
+    }
+
+    const response = await fetch(`${GEMINI_API_URL}/${GEMINI_TEXT_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Gemini API 오류: ${response.status} - ${errorData}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      throw new Error('Gemini API에서 유효한 응답을 받지 못했습니다.');
+    }
+
+    const responseText = data.candidates[0].content.parts[0].text;
+    console.log('✅ Gemini Text API 응답 완료');
+    
+    return responseText;
+    
+  } catch (error) {
+    console.error('❌ Gemini Text API 호출 실패:', error);
+    throw error;
+  }
+}
+
+/**
+ * Gemini API로 이미지 분석
+ * @param {string} imageUrl - 이미지 URL (base64 data URL)
+ * @param {string} prompt - 분석 프롬프트
+ * @returns {Promise<string>} 분석 결과
+ */
+async function callGeminiVisionAPI(imageUrl, prompt) {
+  try {
+    console.log('👁️ Gemini Vision API 호출 시작');
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    }
+
+    // base64 이미지를 Gemini 형식으로 변환
+    let imageData;
+    if (imageUrl.startsWith('data:image/')) {
+      const [header, base64Data] = imageUrl.split(',');
+      const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/png';
+      imageData = {
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      };
+    } else {
+      throw new Error('지원되지 않는 이미지 형식입니다. base64 data URL을 사용해주세요.');
+    }
+
+    const requestBody = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          imageData
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+        topP: 0.8,
+        topK: 40
+      }
+    };
+
+    const response = await fetch(`${GEMINI_API_URL}/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Gemini Vision API 오류: ${response.status} - ${errorData}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
+      throw new Error('Gemini Vision API에서 유효한 응답을 받지 못했습니다.');
+    }
+
+    const responseText = data.candidates[0].content.parts[0].text;
+    console.log('✅ Gemini Vision API 응답 완료');
+    
+    return responseText;
+    
+  } catch (error) {
+    console.error('❌ Gemini Vision API 호출 실패:', error);
+    throw error;
+  }
+}
+
+/**
+ * Gemini API로 이미지 생성 (Imagen 3)
+ * @param {string} prompt - 이미지 생성 프롬프트
+ * @returns {Promise<string>} 생성된 이미지의 base64 data URL
+ */
+async function callGeminiImageGenerationAPI(prompt) {
+  try {
+    console.log('🎨 Gemini Image Generation API 호출 시작');
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    }
+
+    // Imagen 3 모델 사용
+    const requestBody = {
+      prompt: prompt,
+      number_of_images: 1,
+      aspect_ratio: "1:1", // 1024x1024 정사각형
+      safety_filter_level: "block_only_high",
+      person_generation: "allow_adult"
+    };
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:generateImage?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Gemini Image Generation API 오류: ${response.status} - ${errorData}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data.generated_images || !data.generated_images[0]) {
+      throw new Error('Gemini에서 이미지를 생성하지 못했습니다.');
+    }
+
+    // base64 이미지 데이터를 data URL로 변환
+    const base64Image = data.generated_images[0].image.data;
+    const dataUrl = `data:image/png;base64,${base64Image}`;
+    
+    console.log('✅ Gemini Image Generation API 응답 완료');
+    return dataUrl;
+    
+  } catch (error) {
+    console.error('❌ Gemini Image Generation API 호출 실패:', error);
+    throw error;
+  }
+}
 
 // =============================================================================
 
@@ -385,185 +589,215 @@ const ADDITIVE_PROMPTS = {
 };
 
 // =============================================================================
-// API 함수 1: Vision API - 이미지 분석
+// API 함수 1: Vision API - 이미지 분석 (Gemini로 교체)
 // =============================================================================
 export async function analyzeImageWithVision(imageUrl) {
     try {
-        console.log('🔍 Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
+        console.log('🔍 Gemini Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
         
-        const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-            model: "gpt-4o", 
-            messages: [
-            {
-                role: "system",
-                content: VISION_ANALYSIS_PROMPT  // 상단에 정의된 프롬프트 사용
-            },
-            {
-                role: "user",
-                content: [
-                { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
-                { type: "image_url", image_url: { url: imageUrl } }
-                ]
-            }
-            ],
-            max_tokens: 200,
-            temperature: 0.2,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`Vision API 오류: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('✅ Vision API 응답 완료');
-    console.log('📄 Vision 분석 결과:', data.choices[0].message.content.substring(0, 100) + '...');
-        return data.choices[0].message.content;
+        // Gemini Vision API 사용
+        const analysisResult = await callGeminiVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
+        
+        console.log('✅ Gemini Vision API 응답 완료');
+        console.log('📄 Vision 분석 결과:', analysisResult.substring(0, 100) + '...');
+        return analysisResult;
+        
     } catch (error) {
-    console.error('❌ Vision API 호출 실패:', error);
-    throw error;
+        console.error('❌ Gemini Vision API 호출 실패:', error);
+        
+        // Fallback: OpenAI GPT-4V 사용
+        try {
+            console.log('🔄 Fallback: OpenAI GPT-4V 사용');
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o", 
+                    messages: [
+                        {
+                            role: "system",
+                            content: VISION_ANALYSIS_PROMPT
+                        },
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
+                                { type: "image_url", image_url: { url: imageUrl } }
+                            ]
+                        }
+                    ],
+                    max_tokens: 200,
+                    temperature: 0.2,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`OpenAI Vision API 오류: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('✅ Fallback OpenAI Vision API 응답 완료');
+            return data.choices[0].message.content;
+            
+        } catch (fallbackError) {
+            console.error('❌ Fallback Vision API도 실패:', fallbackError);
+            throw error; // 원본 에러 던지기
+        }
     }
 }
 
-// 아이디어 분석 (텍스트 처리)
+// 아이디어 분석 (텍스트 처리) - Gemini로 교체
 export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDescription, visionResult, referenceResult = null, sliderValue = 1) {
     try {
-        console.log('아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
+        console.log('🔮 Gemini 아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
         
         let prompt;
         if (additiveType === 'aesthetics' && referenceResult) {
-        prompt = ADDITIVE_PROMPTS.aesthetics(ideaTitle, ideaDescription, visionResult, referenceResult);
+            prompt = ADDITIVE_PROMPTS.aesthetics(ideaTitle, ideaDescription, visionResult, referenceResult);
         } else {
-        prompt = ADDITIVE_PROMPTS[additiveType](ideaTitle, ideaDescription, visionResult);
+            prompt = ADDITIVE_PROMPTS[additiveType](ideaTitle, ideaDescription, visionResult);
         }
 
-    // 슬라이더 값을 Temperature로 변환 (안정성을 위해 상한 제한)
-    const rawTemperature = getTemperatureFromSlider(sliderValue);
-    const temperature = Math.min(rawTemperature, 0.4); // 형식 안정성을 위해 0.4로 캡
-    console.log('Temperature 설정:', temperature, '(원본:', rawTemperature, ')');
+        // 슬라이더 값을 Temperature로 변환 (안정성을 위해 상한 제한)
+        const rawTemperature = getTemperatureFromSlider(sliderValue);
+        const temperature = Math.min(rawTemperature, 0.4); // 형식 안정성을 위해 0.4로 캡
+        console.log('Temperature 설정:', temperature, '(원본:', rawTemperature, ')');
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini", 
-        messages: [
-          { 
-            role: "system", 
-            content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요." 
-          },
-          { 
-            role: "user", 
-            content: prompt 
-          }
-        ],
-        max_tokens: 1800, 
-        temperature: temperature,
-        response_format: { type: "json_object" } // JSON 강제 반환
-      }),
-    });
+        try {
+            // Gemini API 사용 (JSON 강제)
+            const responseText = await callGeminiTextAPI(prompt, true, temperature, 1800);
+            
+            console.log('원본 응답 길이:', responseText.length);
+            
+            // 방어적 JSON 파싱
+            const result = parseJsonSafely(responseText);
+            
+            console.log('JSON 파싱 성공, 구조 검증 시작...');
+            
+            // 구조 검증 및 보정
+            const validatedResult = validateAndFixStructure(result, additiveType);
+            
+            console.log('구조 검증 및 보정 완료');
+            return validatedResult;
+            
+        } catch (geminiError) {
+            console.error('Gemini API 실패, OpenAI로 Fallback:', geminiError);
+            
+            // Fallback: OpenAI 사용
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${API_KEY}`,
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini", 
+                    messages: [
+                        { 
+                            role: "system", 
+                            content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요." 
+                        },
+                        { 
+                            role: "user", 
+                            content: prompt 
+                        }
+                    ],
+                    max_tokens: 1800, 
+                    temperature: temperature,
+                    response_format: { type: "json_object" }
+                }),
+            });
 
-    if (!response.ok) {
-      throw new Error(`아이디어 생성 API 오류: ${response.status}`);
+            if (!response.ok) {
+                throw new Error(`Fallback OpenAI API 오류: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const responseText = data.choices[0].message.content.trim();
+            
+            try {
+                const result = parseJsonSafely(responseText);
+                const validatedResult = validateAndFixStructure(result, additiveType);
+                console.log('✅ Fallback OpenAI로 성공');
+                return validatedResult;
+            } catch (parseError) {
+                console.error('JSON 파싱 실패:', parseError);
+                return getFallbackStructure(additiveType);
+            }
+        }
+        
+    } catch (error) {
+        console.error('아이디어 생성 API 호출 실패:', error);
+        
+        // 최종 실패 시 기본 구조 반환
+        return getFallbackStructure(additiveType);
     }
-
-    const data = await response.json();
-    console.log('아이디어 생성 API 응답 완료');
-    
-    let responseText = data.choices[0].message.content.trim();
-    console.log('원본 응답 길이:', responseText.length);
-    
-    // 방어적 JSON 파싱
-    try {
-      const result = parseJsonSafely(responseText);
-      
-      console.log('JSON 파싱 성공, 구조 검증 시작...');
-      
-      // 구조 검증 및 보정
-      const validatedResult = validateAndFixStructure(result, additiveType);
-      
-      console.log('구조 검증 및 보정 완료');
-      return validatedResult;
-      
-    } catch (parseError) {
-      console.error('JSON 파싱 실패:', parseError);
-      console.error('응답 앞부분 (200자):', responseText.substring(0, 200));
-      console.error('응답 뒷부분 (200자):', responseText.substring(responseText.length - 200));
-      
-      // 디버깅을 위한 원본 응답 로그 저장 (개발 모드에서만)
-      if (import.meta.env.DEV) {
-        console.log('=== 파싱 실패 원본 응답 (디버깅용) ===');
-        console.log(responseText);
-        console.log('=== 파싱 실패 원본 응답 끝 ===');
-      }
-      
-      // 최종 실패 시 기본 구조 반환
-      return getFallbackStructure(additiveType);
-    }
-  } catch (error) {
-    console.error('아이디어 생성 API 호출 실패:', error);
-    
-    // API 호출 실패 시 오류 throw
-    throw error;
-  }
 }
 
-// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API)
+// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API) - Gemini로 교체
 export async function analyzeReferenceImage(imageUrl) {
   try {
-    console.log('레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
+    console.log('🔍 Gemini 레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
     
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o", 
-        messages: [
-          {
-            role: "system",
-            content: "당신은 디자인 전문가입니다. 제공된 레퍼런스 이미지의 심미적 특징을 분석하세요."
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "이 레퍼런스 이미지의 디자인 형태, 색상, 재질, 스타일적 특징을 간결하게 설명해 주세요." },
-              { type: "image_url", image_url: { url: imageUrl } }
-            ]
-          }
-        ],
-        max_tokens: 200,
-      }),
-    });
+    const prompt = "당신은 디자인 전문가입니다. 제공된 레퍼런스 이미지의 심미적 특징을 분석하세요. 이 레퍼런스 이미지의 디자인 형태, 색상, 재질, 스타일적 특징을 간결하게 설명해 주세요.";
+    
+    try {
+      // Gemini Vision API 사용
+      const analysisResult = await callGeminiVisionAPI(imageUrl, prompt);
+      console.log('✅ Gemini 레퍼런스 이미지 분석 완료');
+      return analysisResult;
+      
+    } catch (geminiError) {
+      console.error('Gemini 레퍼런스 분석 실패, OpenAI로 Fallback:', geminiError);
+      
+      // Fallback: OpenAI 사용
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o", 
+          messages: [
+            {
+              role: "system",
+              content: "당신은 디자인 전문가입니다. 제공된 레퍼런스 이미지의 심미적 특징을 분석하세요."
+            },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "이 레퍼런스 이미지의 디자인 형태, 색상, 재질, 스타일적 특징을 간결하게 설명해 주세요." },
+                { type: "image_url", image_url: { url: imageUrl } }
+              ]
+            }
+          ],
+          max_tokens: 200,
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`레퍼런스 이미지 분석 API 오류: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Fallback 레퍼런스 이미지 분석 API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Fallback 레퍼런스 이미지 분석 완료');
+      return data.choices[0].message.content;
     }
-
-    const data = await response.json();
-    console.log('레퍼런스 이미지 분석 완료');
-    return data.choices[0].message.content;
+    
   } catch (error) {
     console.error('레퍼런스 이미지 분석 실패:', error);
     throw error;
   }
 }
 
-// Vision 분석 결과와 제목, 내용을 바탕으로 제품 태그 생성
+// Vision 분석 결과와 제목, 내용을 바탕으로 제품 태그 생성 - Gemini로 교체
 export async function generateProductTag(visionAnalysis, title = '', description = '') {
   try {
-    console.log('제품 카테고리 분석 중...', { title, description, visionAnalysis });
+    console.log('🏷️ Gemini 제품 카테고리 분석 중...', { title, description, visionAnalysis });
     
     const tagPrompt = `당신은 제품 카테고리 분석 전문가입니다. 
 주어진 정보를 종합적으로 분석하여 적절한 카테고리 태그를 생성하세요.
@@ -594,50 +828,70 @@ ${visionAnalysis || '이미지 분석 없음'}
 
 태그:`;
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user", 
-            content: tagPrompt
-          }
-        ],
-        max_tokens: 30,
-        temperature: 0.2,
-      }),
-    });
+    try {
+      // Gemini API 사용
+      const response = await callGeminiTextAPI(tagPrompt, false, 0.2, 30);
+      let tag = response.trim();
+      
+      // 불필요한 텍스트 제거
+      tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
+      
+      // 태그가 #으로 시작하지 않으면 추가
+      const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
+      
+      console.log('✅ Gemini 카테고리 분석 완료:', finalTag);
+      return finalTag;
+      
+    } catch (geminiError) {
+      console.error('Gemini 태그 생성 실패, OpenAI로 Fallback:', geminiError);
+      
+      // Fallback: OpenAI 사용
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user", 
+              content: tagPrompt
+            }
+          ],
+          max_tokens: 30,
+          temperature: 0.2,
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`태그 생성 API 오류: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Fallback 태그 생성 API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      let tag = data.choices[0].message.content.trim();
+      
+      // 불필요한 텍스트 제거
+      tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
+      
+      // 태그가 #으로 시작하지 않으면 추가
+      const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
+      
+      console.log('✅ Fallback 카테고리 분석 완료:', finalTag);
+      return finalTag;
     }
-
-    const data = await response.json();
-    let tag = data.choices[0].message.content.trim();
     
-    // 불필요한 텍스트 제거
-    tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
-    
-    // 태그가 #으로 시작하지 않으면 추가
-    const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
-    
-    console.log('카테고리 분석 완료:', finalTag);
-    return finalTag;
   } catch (error) {
     console.error('태그 생성 실패:', error);
     return '#전자제품';
   }
 }
 
-// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성
+// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성 - Gemini로 교체
 export async function generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType) {
   try {
-    console.log('개선된 제품 정보 생성 중...');
+    console.log('🔮 Gemini 개선된 제품 정보 생성 중...');
     
     const improvePrompt = `역할: 당신은 제품 디자인 전문가입니다. 분석 결과를 바탕으로 개선된 제품 정보를 JSON으로 반환하세요.
 
@@ -659,40 +913,12 @@ ${stepsData.map(step => `Step ${step.stepNumber}: ${step.title}\n${step.descript
 - description: 어떤 점이 개선되었는지 구체적 설명 (3-4문장)
 - JSON 외 텍스트 절대 금지, 줄바꿈은 공백으로 대체`;
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요."
-          },
-          {
-            role: "user",
-            content: improvePrompt
-          }
-        ],
-        max_tokens: 400,
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`개선된 제품 정보 생성 API 오류: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let responseText = data.choices[0].message.content.trim();
-    
-    console.log('응답 길이:', responseText.length);
-    
     try {
+      // Gemini API 사용 (JSON 강제)
+      const responseText = await callGeminiTextAPI(improvePrompt, true, 0.2, 400);
+      
+      console.log('응답 길이:', responseText.length);
+      
       const result = JSON.parse(responseText);
       
       // 결과 검증 및 정리
@@ -704,30 +930,82 @@ ${stepsData.map(step => `Step ${step.stepNumber}: ${step.title}\n${step.descript
       result.title = result.title.replace(/[\n\r]/g, ' ').trim();
       result.description = result.description.replace(/[\n\r]/g, ' ').trim();
       
-      console.log('파싱 및 검증 성공:', result);
+      console.log('✅ Gemini 파싱 및 검증 성공:', result);
       return result;
       
-    } catch (parseError) {
-      console.error('JSON 파싱 실패:', parseError);
+    } catch (geminiError) {
+      console.error('Gemini 제품 정보 생성 실패, OpenAI로 Fallback:', geminiError);
       
-      // 간단한 복구 시도
-      const titleMatch = responseText.match(/"title"\s*:\s*"([^"]+)"/);
-      const descMatch = responseText.match(/"description"\s*:\s*"([^"]+)"/);
+      // Fallback: OpenAI 사용
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요."
+            },
+            {
+              role: "user",
+              content: improvePrompt
+            }
+          ],
+          max_tokens: 400,
+          temperature: 0.2,
+          response_format: { type: "json_object" }
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fallback 개선된 제품 정보 생성 API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      let responseText = data.choices[0].message.content.trim();
       
-      if (titleMatch && descMatch) {
+      try {
+        const result = JSON.parse(responseText);
+        
+        // 결과 검증 및 정리
+        if (!result.title || !result.description) {
+          throw new Error('필수 필드가 누락되었습니다');
+        }
+        
+        // 텍스트 정리 (줄바꿈 제거)
+        result.title = result.title.replace(/[\n\r]/g, ' ').trim();
+        result.description = result.description.replace(/[\n\r]/g, ' ').trim();
+        
+        console.log('✅ Fallback 파싱 및 검증 성공:', result);
+        return result;
+        
+      } catch (parseError) {
+        console.error('JSON 파싱 실패:', parseError);
+        
+        // 간단한 복구 시도
+        const titleMatch = responseText.match(/"title"\s*:\s*"([^"]+)"/);
+        const descMatch = responseText.match(/"description"\s*:\s*"([^"]+)"/);
+        
+        if (titleMatch && descMatch) {
+          return {
+            title: titleMatch[1].trim(),
+            description: descMatch[1].trim()
+          };
+        }
+        
+        // 최종 실패 시 기본값 반환
+        const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
         return {
-          title: titleMatch[1].trim(),
-          description: descMatch[1].trim()
+          title: `${typeNames[additiveType] || '개선된'} ${originalTitle}`,
+          description: `${typeNames[additiveType] || '분석'} 첨가제를 통해 개선된 제품이에요.`
         };
       }
-      
-      // 최종 실패 시 기본값 반환
-      const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
-      return {
-        title: `${typeNames[additiveType] || '개선된'} ${originalTitle}`,
-        description: `${typeNames[additiveType] || '분석'} 첨가제를 통해 개선된 제품이에요.`
-      };
     }
+    
   } catch (error) {
     console.error('개선된 제품 정보 생성 실패:', error);
     // 실패 시 기본값 반환
@@ -784,11 +1062,11 @@ const addEssentialKeywords = (stabilityPrompt) => {
 };
 
 // =============================================================================
-// API 함수 2: Stability AI 프롬프트 생성
+// API 함수 2: 이미지 생성 프롬프트 최적화 (Gemini로 교체)
 // =============================================================================
 export async function generateStabilityPrompt(title, description, visionResult, originalImageUrl = null) {
   try {
-    console.log('🎨 Stability AI용 프롬프트 생성 중...');
+    console.log('🎨 Gemini 이미지 생성 프롬프트 최적화 중...');
     console.log('📝 입력 데이터:');
     console.log('- 제품 제목:', title);
     console.log('- 제품 설명:', description.substring(0, 100) + '...');
@@ -801,51 +1079,76 @@ export async function generateStabilityPrompt(title, description, visionResult, 
       .replace('{VISION_ANALYSIS}', visionResult ? `Vision Analysis: ${visionResult}` : 'No additional vision analysis available')
       .replace('{REFERENCE_IMAGE_INFO}', originalImageUrl ? '### Reference Image Available\nA reference image will be provided to maintain visual consistency with the original idea.' : '');
 
-    console.log('📤 GPT로 전송할 프롬프트 길이:', translatePrompt.length);
+    console.log('📤 Gemini로 전송할 프롬프트 길이:', translatePrompt.length);
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: translatePrompt
-          }
-        ],
-        max_tokens: 200,
-        temperature: 0.3,
-      }),
-    });
+    try {
+      // Gemini API 사용
+      const response = await callGeminiTextAPI(translatePrompt, false, 0.3, 200);
+      let stabilityPrompt = response.trim();
+      
+      // 불필요한 따옴표나 설명 제거
+      stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
+      
+      console.log('🔍 원본 프롬프트 검증 중...');
+      console.log('📄 생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
+      
+      // 제품 타입 검증 및 보정
+      stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
+      
+      // 필수 키워드 추가
+      stabilityPrompt = addEssentialKeywords(stabilityPrompt);
+      
+      console.log('✅ 최종 Gemini 프롬프트:', stabilityPrompt);
+      return stabilityPrompt;
+      
+    } catch (geminiError) {
+      console.error('Gemini 프롬프트 생성 실패, OpenAI로 Fallback:', geminiError);
+      
+      // Fallback: OpenAI 사용
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: translatePrompt
+            }
+          ],
+          max_tokens: 200,
+          temperature: 0.3,
+        }),
+      });
 
-    if (!response.ok) {
-      throw new Error(`Stability 프롬프트 생성 API 오류: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Fallback Stability 프롬프트 생성 API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      let stabilityPrompt = data.choices[0].message.content.trim();
+      
+      // 불필요한 따옴표나 설명 제거
+      stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
+      
+      console.log('🔍 Fallback 프롬프트 검증 중...');
+      console.log('📄 생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
+      
+      // 제품 타입 검증 및 보정
+      stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
+      
+      // 필수 키워드 추가
+      stabilityPrompt = addEssentialKeywords(stabilityPrompt);
+      
+      console.log('✅ 최종 Fallback 프롬프트:', stabilityPrompt);
+      return stabilityPrompt;
     }
-
-    const data = await response.json();
-    let stabilityPrompt = data.choices[0].message.content.trim();
-    
-    // 불필요한 따옴표나 설명 제거
-    stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
-    
-    console.log('🔍 원본 프롬프트 검증 중...');
-    console.log('📄 생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
-    
-    // 제품 타입 검증 및 보정
-    stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
-    
-    // 필수 키워드 추가
-    stabilityPrompt = addEssentialKeywords(stabilityPrompt);
-    
-    console.log('✅ 최종 Stability AI 프롬프트:', stabilityPrompt);
-    return stabilityPrompt;
     
   } catch (error) {
-    console.error('Stability 프롬프트 생성 실패:', error);
+    console.error('프롬프트 생성 실패:', error);
     // 실패 시 기본 프롬프트 반환 (원본 제품 정보 기반)
     const productType = title.toLowerCase().includes('의자') ? 'chair' : 
                        title.toLowerCase().includes('벤치') ? 'bench' :
@@ -860,68 +1163,79 @@ export async function generateStabilityPrompt(title, description, visionResult, 
   }
 }
 
-// Stability AI로 제품 이미지 생성
+// Gemini Imagen으로 제품 이미지 생성 (Stability AI 대체)
 export async function generateProductImageWithStability(promptText, originalImageUrl = null) {
   try {
-    console.log('Stability AI 이미지 생성 시작...');
+    console.log('🎨 Gemini Imagen 이미지 생성 시작...');
     console.log('사용할 프롬프트:', promptText);
     
-    if (!STABILITY_API_KEY) {
-      throw new Error('Stability AI API 키가 설정되지 않았습니다.');
-    }
-    
-    // FormData 생성
-    const formData = new FormData();
-    formData.append('prompt', promptText);
-    formData.append('mode', 'text-to-image');
-    formData.append('model', 'sd3.5-large'); // 최신 고품질 모델
-    formData.append('aspect_ratio', '1:1');
-    formData.append('output_format', 'png');
-    
-    // 참조 이미지가 있는 경우 추가
-    if (originalImageUrl) {
-      try {
-        // 원본 이미지 URL에서 이미지 데이터 가져오기
-        const imageResponse = await fetch(originalImageUrl);
-        if (imageResponse.ok) {
-          const imageBlob = await imageResponse.blob();
-          formData.append('image', imageBlob, 'reference.png');
-          formData.append('strength', '0.35'); // 참조 이미지 영향도 (0.1-1.0)
-          console.log('참조 이미지 추가됨');
-        }
-      } catch (imageError) {
-        console.warn('참조 이미지 로드 실패, 텍스트만으로 생성:', imageError.message);
+    try {
+      // Gemini Imagen API 사용
+      const imageUrl = await callGeminiImageGenerationAPI(promptText);
+      console.log('✅ Gemini Imagen 이미지 생성 완료');
+      return imageUrl;
+      
+    } catch (geminiError) {
+      console.error('Gemini Imagen 실패, Stability AI로 Fallback:', geminiError);
+      
+      // Fallback: Stability AI 사용
+      if (!STABILITY_API_KEY) {
+        throw new Error('Stability AI API 키가 설정되지 않았습니다.');
       }
+      
+      // FormData 생성
+      const formData = new FormData();
+      formData.append('prompt', promptText);
+      formData.append('mode', 'text-to-image');
+      formData.append('model', 'sd3.5-large'); // 최신 고품질 모델
+      formData.append('aspect_ratio', '1:1');
+      formData.append('output_format', 'png');
+      
+      // 참조 이미지가 있는 경우 추가
+      if (originalImageUrl) {
+        try {
+          // 원본 이미지 URL에서 이미지 데이터 가져오기
+          const imageResponse = await fetch(originalImageUrl);
+          if (imageResponse.ok) {
+            const imageBlob = await imageResponse.blob();
+            formData.append('image', imageBlob, 'reference.png');
+            formData.append('strength', '0.35'); // 참조 이미지 영향도 (0.1-1.0)
+            console.log('참조 이미지 추가됨');
+          }
+        } catch (imageError) {
+          console.warn('참조 이미지 로드 실패, 텍스트만으로 생성:', imageError.message);
+        }
+      }
+
+      const response = await fetch(STABILITY_API_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${STABILITY_API_KEY}`,
+          "Accept": "image/*"
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Fallback Stability AI API 오류 상세:', errorText);
+        console.error('❌ HTTP 상태:', response.status);
+        throw new Error(`Fallback Stability AI API 오류: ${response.status} - ${errorText}`);
+      }
+
+      // 이미지 데이터를 Base64로 변환
+      const imageBuffer = await response.arrayBuffer();
+      const base64Image = btoa(
+        new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      const dataUrl = `data:image/png;base64,${base64Image}`;
+      
+      console.log('✅ Fallback Stability AI 이미지 생성 완료');
+      return dataUrl;
     }
-
-    const response = await fetch(STABILITY_API_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${STABILITY_API_KEY}`,
-        "Accept": "image/*"
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Stability AI API 오류 상세:', errorText);
-      console.error('❌ HTTP 상태:', response.status);
-      throw new Error(`Stability AI API 오류: ${response.status} - ${errorText}`);
-    }
-
-    // 이미지 데이터를 Base64로 변환
-    const imageBuffer = await response.arrayBuffer();
-    const base64Image = btoa(
-      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    const dataUrl = `data:image/png;base64,${base64Image}`;
-    
-    console.log('✅ Stability AI 이미지 생성 완료');
-    return dataUrl;
     
   } catch (error) {
-    console.error('❌ Stability AI 이미지 생성 실패:', error);
+    console.error('❌ 이미지 생성 실패:', error);
     console.error('❌ 오류 타입:', error.name);
     console.error('❌ 오류 메시지:', error.message);
     console.error('❌ 사용된 프롬프트:', promptText.substring(0, 200) + '...');
@@ -1036,13 +1350,11 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
   }
 }
 
-// IFL(랜덤 아이디어 생성) 함수
+// IFL(랜덤 아이디어 생성) 함수 - Gemini로 교체
 export const generateRandomIdea = async (userPrompt) => {
-  if (!API_KEY) {
-    throw new Error('OpenAI API 키가 설정되지 않았습니다.');
-  }
-
   try {
+    console.log('🔮 Gemini 랜덤 아이디어 생성 시작:', userPrompt);
+    
     const prompt = `당신은 창의적인 제품 디자인 전문가입니다. 
 사용자가 입력한 키워드를 바탕으로 혁신적이고 실용적인 제품 아이디어를 생성해주세요.
 
@@ -1050,10 +1362,17 @@ export const generateRandomIdea = async (userPrompt) => {
 
 다음 JSON 형식으로 응답해주세요:
 {
-  "title": "제품 이름 (간결하고 창의적으로)",
-  "description": "제품에 대한 상세한 설명 (기능, 사용법, 특징을 포함하여 3-4문장으로)",
-  "imagePrompt": "Stability AI로 이미지를 생성하기 위한 영어 프롬프트 (제품이 잘리지 않도록 'full product view, completely visible, not cropped, proper framing' 등의 키워드 포함)"
+  "title": "제품 이름 (간결하고 창의적인 한글로)",
+  "description": "제품에 대한 상세한 설명 (기능, 사용법, 특징을 포함하여 3-4문장으로, 한글로)",
+  "imagePrompt": "이미지 생성을 위한 영어 프롬프트 (제품이 잘리지 않도록 'full product view, completely visible, not cropped, proper framing' 등의 키워드 포함)"
 }
+
+중요한 요구사항:
+- title과 description은 반드시 한글로 작성하세요
+- 제품명은 한국인이 이해하기 쉬운 한글 이름으로 지어주세요
+- 설명도 모두 한글로 작성하고, 친근하고 이해하기 쉽게 써주세요
+- imagePrompt만 영어로 작성하세요
+- 실제로 존재할 법한 현실적이고 유용한 제품을 제안하세요
 
 imagePrompt 작성 시 반드시 다음을 포함하세요:
 - Full product view, completely visible
@@ -1064,40 +1383,85 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
 
 창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
 
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.8,
-        max_tokens: 500
-      })
-    });
+    try {
+      // Gemini API 사용 (JSON 강제)
+      const responseText = await callGeminiTextAPI(prompt, true, 0.8, 500);
+      
+      // JSON 파싱
+      const ideaData = JSON.parse(responseText);
+      
+      console.log('✅ Gemini 랜덤 아이디어 생성 완료');
+      return {
+        title: ideaData.title || '새로운 아이디어',
+        description: ideaData.description || '혁신적인 제품 아이디어입니다.',
+        imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
+      };
+      
+    } catch (geminiError) {
+      console.error('Gemini 랜덤 아이디어 생성 실패, OpenAI로 Fallback:', geminiError);
+      
+      // Fallback: OpenAI 사용
+      if (!API_KEY) {
+        throw new Error('OpenAI API 키가 설정되지 않았습니다.');
+      }
 
-    if (!response.ok) {
-      throw new Error(`GPT API 요청 실패: ${response.status}`);
-    }
+      const fallbackPrompt = `당신은 창의적인 제품 디자인 전문가입니다. 
+사용자가 입력한 키워드를 바탕으로 혁신적이고 실용적인 제품 아이디어를 생성해주세요.
 
-    const data = await response.json();
-    const content = data.choices[0].message.content;
-    
-    // JSON 파싱
-    const jsonMatch = content.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('GPT 응답에서 JSON을 찾을 수 없습니다.');
+키워드: ${userPrompt}
+
+다음 JSON 형식으로 응답해주세요:
+{
+  "title": "제품 이름 (간결하고 창의적인 한글로)",
+  "description": "제품에 대한 상세한 설명 (기능, 사용법, 특징을 포함하여 3-4문장으로, 한글로)",
+  "imagePrompt": "이미지 생성을 위한 영어 프롬프트 (제품이 잘리지 않도록 'full product view, completely visible, not cropped, proper framing' 등의 키워드 포함)"
+}
+
+중요한 요구사항:
+- title과 description은 반드시 한글로 작성하세요
+- 제품명은 한국인이 이해하기 쉬운 한글 이름으로 지어주세요
+- 설명도 모두 한글로 작성하고, 친근하고 이해하기 쉽게 써주세요
+- imagePrompt만 영어로 작성하세요
+- 실제로 존재할 법한 현실적이고 유용한 제품을 제안하세요
+
+창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4',
+          messages: [{ role: 'user', content: fallbackPrompt }],
+          temperature: 0.8,
+          max_tokens: 500
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Fallback GPT API 요청 실패: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+      
+      // JSON 파싱
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('GPT 응답에서 JSON을 찾을 수 없습니다.');
+      }
+      
+      const ideaData = JSON.parse(jsonMatch[0]);
+      
+      console.log('✅ Fallback 랜덤 아이디어 생성 완료');
+      return {
+        title: ideaData.title || '새로운 아이디어',
+        description: ideaData.description || '혁신적인 제품 아이디어입니다.',
+        imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
+      };
     }
-    
-    const ideaData = JSON.parse(jsonMatch[0]);
-    
-    return {
-      title: ideaData.title || '새로운 아이디어',
-      description: ideaData.description || '아이디어 설명',
-      imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design`
-    };
     
   } catch (error) {
     console.error('랜덤 아이디어 생성 실패:', error);
@@ -1105,14 +1469,10 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
   }
 };
 
-// Stability AI 이미지 생성 함수 (IFL용)
+// Gemini Imagen 이미지 생성 함수 (IFL용)
 export const generateImage = async (prompt) => {
-  if (!STABILITY_API_KEY) {
-    throw new Error('Stability AI API 키가 설정되지 않았습니다.');
-  }
-
   try {
-    console.log('Stability AI 이미지 생성 (IFL):', prompt);
+    console.log('🎨 Gemini Imagen 이미지 생성 (IFL):', prompt);
     
     // 잘못된 제품 키워드 감지
     const unwantedItems = ['phone', 'iphone', 'smartphone', 'monitor', 'screen', 'display', 'computer', 'laptop', 'tablet'];
@@ -1132,35 +1492,51 @@ export const generateImage = async (prompt) => {
       enhancedPrompt = `Full product view, completely visible, ${enhancedPrompt}, not cropped, proper framing, adequate spacing around product`;
     }
     
-    // FormData 생성
-    const formData = new FormData();
-    formData.append('prompt', enhancedPrompt);
-    formData.append('mode', 'text-to-image');
-    formData.append('model', 'sd3.5-large');
-    formData.append('aspect_ratio', '1:1');
-    formData.append('output_format', 'png');
+    try {
+      // Gemini Imagen API 사용
+      const imageUrl = await callGeminiImageGenerationAPI(enhancedPrompt);
+      console.log('✅ Gemini Imagen 이미지 생성 (IFL) 완료');
+      return imageUrl;
+      
+    } catch (geminiError) {
+      console.error('Gemini Imagen 실패, Stability AI로 Fallback:', geminiError);
+      
+      // Fallback: Stability AI 사용
+      if (!STABILITY_API_KEY) {
+        throw new Error('Stability AI API 키가 설정되지 않았습니다.');
+      }
 
-    const response = await fetch(STABILITY_API_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${STABILITY_API_KEY}`,
-        'Accept': 'image/*'
-      },
-      body: formData
-    });
+      // FormData 생성
+      const formData = new FormData();
+      formData.append('prompt', enhancedPrompt);
+      formData.append('mode', 'text-to-image');
+      formData.append('model', 'sd3.5-large');
+      formData.append('aspect_ratio', '1:1');
+      formData.append('output_format', 'png');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Stability AI API 요청 실패: ${response.status} - ${errorText}`);
+      const response = await fetch(STABILITY_API_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${STABILITY_API_KEY}`,
+          'Accept': 'image/*'
+        },
+        body: formData
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Fallback Stability AI API 요청 실패: ${response.status} - ${errorText}`);
+      }
+
+      // 이미지 데이터를 Base64로 변환
+      const imageBuffer = await response.arrayBuffer();
+      const base64Image = btoa(
+        new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
+      
+      console.log('✅ Fallback Stability AI 이미지 생성 (IFL) 완료');
+      return `data:image/png;base64,${base64Image}`;
     }
-
-    // 이미지 데이터를 Base64로 변환
-    const imageBuffer = await response.arrayBuffer();
-    const base64Image = btoa(
-      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    
-    return `data:image/png;base64,${base64Image}`;
     
   } catch (error) {
     console.error('이미지 생성 실패:', error);

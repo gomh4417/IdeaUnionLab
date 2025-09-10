@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
-import { generateImprovedProductWithImage } from '../utils/gptApi';
+import { generateImprovedProductWithImage } from '../utils/Aiapi';
 import { uploadDataUrl } from '../utils/firebaseStorage';
 import Header from '../jsx/Header';
 import styled from 'styled-components';
@@ -81,6 +81,16 @@ function ResultPage() {
       if (!gptResponse?.steps || !originalIdea) return;
       try {
         setLoadingImprovedInfo(true);
+        
+        console.log('🚀 ResultPage: 이미지 생성 프로세스 시작');
+        console.log('📋 입력 데이터:');
+        console.log('- originalIdea.title:', originalIdea.title);
+        console.log('- originalIdea.description:', originalIdea.description);
+        console.log('- additiveType:', additiveType);
+        console.log('- visionAnalysis 존재:', !!visionAnalysis);
+        console.log('- originalIdea.imageUrl 존재:', !!originalIdea.imageUrl);
+        console.log('- originalIdea.imageUrl:', originalIdea.imageUrl?.substring(0, 100) + '...');
+        
         const improved = await generateImprovedProductWithImage(
           originalIdea.title,
           originalIdea.description,
@@ -91,6 +101,14 @@ function ResultPage() {
         );
 
         if (!mounted) return;
+
+        console.log('🎯 ResultPage: 이미지 생성 완료');
+        console.log('📊 결과 데이터:');
+        console.log('- improved.title:', improved.title);
+        console.log('- improved.description:', improved.description);
+        console.log('- improved.imageUrl 존재:', !!improved.imageUrl);
+        console.log('- improved.imageGenerationSuccess:', improved.imageGenerationSuccess);
+        console.log('- improved.imageGenerationError:', improved.imageGenerationError);
 
         // 개선 정보 확정 (이미지 생성 성공 시 dataURL 포함될 수 있음)
         setImprovedIdea({
@@ -103,9 +121,13 @@ function ResultPage() {
           dalleError: improved.imageGenerationError || null,
           originalImagePrompt: improved.originalImagePrompt || null
         });
+        
+        console.log('✅ ResultPage: improvedIdea 상태 업데이트 완료');
+        console.log('🖼️ 최종 표시될 이미지:', improved.imageUrl ? '새 이미지' : '원본 이미지');
+        
       } catch (e) {
         if (!mounted) return;
-        console.error('개선 생성 실패:', e);
+        console.error('❌ ResultPage: 개선 생성 실패:', e);
         setImprovedIdea({
           ...originalIdea,
           title: `${additiveType === 'creativity' ? '창의성' : additiveType === 'aesthetics' ? '심미성' : '사용성'} 개선된 ${originalIdea.title}`,

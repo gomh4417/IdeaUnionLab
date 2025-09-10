@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import Icons from '../jsx/Icons';
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { generateIdeaWithAdditive, analyzeReferenceImage, generateImprovedProductInfo, analyzeImageWithVision, generateProductImageWithStability_I2I } from '../utils/gptApi';
+import { generateIdeaWithAdditive, analyzeReferenceImage, generateImprovedProductInfo, analyzeImageWithVision, generateProductImageWithStability_I2I } from '../utils/Aiapi';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
 
 import ActionBtn from '../jsx/ActionBtn';
