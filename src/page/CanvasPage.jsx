@@ -5,7 +5,6 @@ import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
 import {
-  analyzeImageWithVision,
   generateProductTag,
   generateRandomIdea,
   generateImage,
@@ -638,19 +637,11 @@ function CanvasPage() {
                 console.error('캔버스 이미지 생성 실패:', e);
               }
 
-              // 2) Vision/태그
-              let visionAnalysis = null;
+              // 2) 제품 태그 생성 (Vision API 없이 제목과 내용만으로)
               let productTag = '#생활용품';
-              if (canvasImageUrl) {
-                try {
-                  visionAnalysis = await analyzeImageWithVision(canvasImageUrl);
-                } catch {
-                  visionAnalysis = '이미지 분석을 수행할 수 없습니다.';
-                }
-              }
               try {
                 productTag = await generateProductTag(
-                  visionAnalysis || '',
+                  '', // visionAnalysis는 빈 문자열로 전달
                   title,
                   content
                 );
@@ -699,7 +690,7 @@ function CanvasPage() {
                 title: title || '제목 없음',
                 description: content || '설명 없음',
                 imageUrl: finalImageUrl || null,
-                visionAnalysis: visionAnalysis || null,
+                visionAnalysis: null, // Vision API 호출 안함으로 null 저장
                 tags: [productTag],
                 type: 'original',
                 createdAt: new Date(),

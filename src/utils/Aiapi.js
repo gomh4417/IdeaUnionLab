@@ -1,11 +1,16 @@
-const API_KEY = import.meta.env.VITE_OPENAI_API_KEY; // 기존 키 유지 (fallback용)
+import { getDownloadURL, ref, getBytes } from "firebase/storage";
+import { storage } from "../firebase.js";
+
+const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const API_URL = "https://api.openai.com/v1/chat/completions";
-const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY; // 기존 키 유지 (fallback용)
+const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY;
 const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3";
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-const GEMINI_TEXT_MODEL = "gemini-2.0-pro";
-const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image";
+
+// 개발 환경에서 프록시 사용 여부 (CORS 우회용)
+const USE_PROXY = import.meta.env.DEV; // 개발 모드에서만 프록시 사용
+const PROXY_FIREBASE_STORAGE = "/firebase-storage";
+const PROXY_FIREBASE_STORAGE_NEW = "/firebase-storage-new";
+const PROXY_STABILITY_API = "/stability-api/v2beta/stable-image/generate/sd3";
 
 // =============================================================================
 
@@ -49,6 +54,7 @@ Description: {DESCRIPTION}
 8. Modern, clean aesthetic suitable for commercial use
 9. Sharp focus and high resolution appearance
 10. Full product view from optimal angle
+11. MAINTAIN ORIGINAL PRODUCT TYPE - if input shows a vacuum cleaner, output must be a vacuum cleaner
 
 Create a detailed English prompt (max 150 words) that describes:
 - The EXACT product type mentioned in the title and description
@@ -56,12 +62,15 @@ Create a detailed English prompt (max 150 words) that describes:
 - Materials, textures, and finishes appropriate for this specific product
 - Professional photography setup with full product visibility
 - Clean background and proper framing
+- PRODUCT TYPE CONSISTENCY - ensure the generated image matches the original product category
 
 CRITICAL INSTRUCTIONS:
 1. Focus PRIMARILY on the product title and description - this is the main product to generate
 2. Do NOT generate random products - stick to what's described in the title/description
 3. Always include keywords like "full product view", "completely visible", "not cropped", "proper framing"
 4. If the vision analysis mentions different objects, ignore them and focus on the title/description
+5. PRESERVE PRODUCT TYPE - if original is a cleaning device, ensure output is also a cleaning device
+6. Add specific product type keywords to reinforce consistency (e.g., "vacuum cleaner", "cleaning appliance")
 
 Focus on creating a prompt that will produce the EXACT product described in the title and description, with complete visibility and premium quality.
 
@@ -101,7 +110,12 @@ const PRODUCT_TYPE_MAPPING = {
   '펜': ['pen', 'pencil', 'writing'],
   '시계': ['watch', 'clock', 'timepiece'],
   '화장품': ['cosmetic', 'beauty', 'skincare'],
-  '크림': ['cream', 'lotion', 'moisturizer']
+  '크림': ['cream', 'lotion', 'moisturizer'],
+  '청소기': ['vacuum cleaner', 'cleaning appliance', 'suction device'],
+  '진공청소기': ['vacuum cleaner', 'cleaning appliance', 'suction device'],
+  '공기청정기': ['air purifier', 'air cleaner', 'air filtration device'],
+  '에어컨': ['air conditioner', 'cooling device', 'climate control'],
+  '선풍기': ['fan', 'cooling fan', 'ventilation device']
 };
 
 // 5. 제외할 제품 키워드 (잘못 생성될 수 있는 제품들)
@@ -121,201 +135,135 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
 ];
 
 // =============================================================================
-// GEMINI API 헬퍼 함수들
+// GPT-4o API 헬퍼 함수들
 // =============================================================================
 
 /**
- * Gemini API로 텍스트 생성 (JSON 강제)
+ * GPT-4o API로 텍스트 생성 (JSON 강제)
  * @param {string} prompt - 프롬프트 텍스트
  * @param {Object} schema - JSON 스키마 (선택사항)
  * @param {number} temperature - 온도 (0.0-2.0)
  * @param {number} maxTokens - 최대 토큰 수
  * @returns {Promise<string>} 생성된 텍스트
  */
-async function callGeminiTextAPI(prompt, schema = null, temperature = 0.7, maxTokens = 2048) {
+async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxTokens = 2048) {
   try {
-    console.log('🔮 Gemini Text API 호출 시작');
+    console.log('GPT-4o Text API 호출 시작');
     
-    if (!GEMINI_API_KEY) {
-      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    if (!API_KEY) {
+      throw new Error('OpenAI API 키가 설정되지 않았습니다.');
     }
 
     const requestBody = {
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
-      generationConfig: {
-        temperature: temperature,
-        maxOutputTokens: maxTokens,
-        topP: 0.8,
-        topK: 40
-      }
+      model: "gpt-4o",
+      messages: [
+        { 
+          role: "system", 
+          content: schema ? "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요." : "You are a helpful assistant."
+        },
+        { 
+          role: "user", 
+          content: prompt 
+        }
+      ],
+      temperature: temperature,
+      max_tokens: maxTokens
     };
 
     // JSON 스키마가 있으면 JSON 응답 강제
     if (schema) {
-      requestBody.generationConfig.responseMimeType = "application/json";
-      // 간단한 스키마 문자열 추가 (Gemini는 복잡한 스키마를 지원하지 않으므로)
-      prompt += "\n\n응답은 반드시 유효한 JSON 형식으로만 출력하세요. 다른 텍스트나 설명은 포함하지 마세요.";
-      requestBody.contents[0].parts[0].text = prompt;
+      requestBody.response_format = { type: "json_object" };
     }
 
-    const response = await fetch(`${GEMINI_API_URL}/${GEMINI_TEXT_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`
       },
       body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      throw new Error(`Gemini API 오류: ${response.status} - ${errorData}`);
+      throw new Error(`GPT-4o API 오류: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
     
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Gemini API에서 유효한 응답을 받지 못했습니다.');
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('GPT-4o API에서 유효한 응답을 받지 못했습니다.');
     }
 
-    const responseText = data.candidates[0].content.parts[0].text;
-    console.log('✅ Gemini Text API 응답 완료');
+    const responseText = data.choices[0].message.content;
+    console.log('GPT-4o Text API 응답 완료');
     
     return responseText;
     
   } catch (error) {
-    console.error('❌ Gemini Text API 호출 실패:', error);
+    console.error('GPT-4o Text API 호출 실패:', error);
     throw error;
   }
 }
 
 /**
- * Gemini API로 이미지 분석
+ * GPT-4o API로 이미지 분석
  * @param {string} imageUrl - 이미지 URL (base64 data URL)
  * @param {string} prompt - 분석 프롬프트
  * @returns {Promise<string>} 분석 결과
  */
-async function callGeminiVisionAPI(imageUrl, prompt) {
+async function callGPTVisionAPI(imageUrl, prompt) {
   try {
-    console.log('👁️ Gemini Vision API 호출 시작');
+    console.log('GPT-4o Vision API 호출 시작');
     
-    if (!GEMINI_API_KEY) {
-      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    if (!API_KEY) {
+      throw new Error('OpenAI API 키가 설정되지 않았습니다.');
     }
 
-    // base64 이미지를 Gemini 형식으로 변환
-    let imageData;
-    if (imageUrl.startsWith('data:image/')) {
-      const [header, base64Data] = imageUrl.split(',');
-      const mimeType = header.match(/data:([^;]+)/)?.[1] || 'image/png';
-      imageData = {
-        inlineData: {
-          data: base64Data,
-          mimeType: mimeType
-        }
-      };
-    } else {
-      throw new Error('지원되지 않는 이미지 형식입니다. base64 data URL을 사용해주세요.');
-    }
-
-    const requestBody = {
-      contents: [{
-        parts: [
-          { text: prompt },
-          imageData
-        ]
-      }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1024,
-        topP: 0.8,
-        topK: 40
-      }
-    };
-
-    const response = await fetch(`${GEMINI_API_URL}/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
+    const response = await fetch(API_URL, {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`,
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify({
+        model: "gpt-4o", 
+        messages: [
+          {
+            role: "system",
+            content: prompt
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
+              { type: "image_url", image_url: { url: imageUrl } }
+            ]
+          }
+        ],
+        max_tokens: 200,
+        temperature: 0.2,
+      }),
     });
 
     if (!response.ok) {
       const errorData = await response.text();
-      throw new Error(`Gemini Vision API 오류: ${response.status} - ${errorData}`);
+      throw new Error(`GPT-4o Vision API 오류: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
     
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Gemini Vision API에서 유효한 응답을 받지 못했습니다.');
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error('GPT-4o Vision API에서 유효한 응답을 받지 못했습니다.');
     }
 
-    const responseText = data.candidates[0].content.parts[0].text;
-    console.log('✅ Gemini Vision API 응답 완료');
+    const responseText = data.choices[0].message.content;
+    console.log('GPT-4o Vision API 응답 완료');
     
     return responseText;
     
   } catch (error) {
-    console.error('❌ Gemini Vision API 호출 실패:', error);
-    throw error;
-  }
-}
-
-/**
- * Gemini API로 이미지 생성 (Imagen 3)
- * @param {string} prompt - 이미지 생성 프롬프트
- * @returns {Promise<string>} 생성된 이미지의 base64 data URL
- */
-async function callGeminiImageGenerationAPI(prompt) {
-  try {
-    console.log('🎨 Gemini Image Generation API 호출 시작');
-    
-    if (!GEMINI_API_KEY) {
-      throw new Error('Gemini API 키가 설정되지 않았습니다.');
-    }
-
-    // Imagen 3 모델 사용
-    const requestBody = {
-      prompt: prompt,
-      number_of_images: 1,
-      aspect_ratio: "1:1", // 1024x1024 정사각형
-      safety_filter_level: "block_only_high",
-      person_generation: "allow_adult"
-    };
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:generateImage?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      throw new Error(`Gemini Image Generation API 오류: ${response.status} - ${errorData}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.generated_images || !data.generated_images[0]) {
-      throw new Error('Gemini에서 이미지를 생성하지 못했습니다.');
-    }
-
-    // base64 이미지 데이터를 data URL로 변환
-    const base64Image = data.generated_images[0].image.data;
-    const dataUrl = `data:image/png;base64,${base64Image}`;
-    
-    console.log('✅ Gemini Image Generation API 응답 완료');
-    return dataUrl;
-    
-  } catch (error) {
-    console.error('❌ Gemini Image Generation API 호출 실패:', error);
+    console.error('GPT-4o Vision API 호출 실패:', error);
     throw error;
   }
 }
@@ -589,70 +537,29 @@ const ADDITIVE_PROMPTS = {
 };
 
 // =============================================================================
-// API 함수 1: Vision API - 이미지 분석 (Gemini로 교체)
+// API 함수 1: Vision API - 이미지 분석 (GPT-4o 사용)
 // =============================================================================
 export async function analyzeImageWithVision(imageUrl) {
     try {
-        console.log('🔍 Gemini Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
+        console.log('GPT-4o Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
         
-        // Gemini Vision API 사용
-        const analysisResult = await callGeminiVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
+        // GPT-4o Vision API 사용
+        const analysisResult = await callGPTVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
         
-        console.log('✅ Gemini Vision API 응답 완료');
-        console.log('📄 Vision 분석 결과:', analysisResult.substring(0, 100) + '...');
+        console.log('GPT-4o Vision API 응답 완료');
+        console.log('Vision 분석 결과:', analysisResult.substring(0, 100) + '...');
         return analysisResult;
         
     } catch (error) {
-        console.error('❌ Gemini Vision API 호출 실패:', error);
-        
-        // Fallback: OpenAI GPT-4V 사용
-        try {
-            console.log('🔄 Fallback: OpenAI GPT-4V 사용');
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${API_KEY}`,
-                },
-                body: JSON.stringify({
-                    model: "gpt-4o", 
-                    messages: [
-                        {
-                            role: "system",
-                            content: VISION_ANALYSIS_PROMPT
-                        },
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
-                                { type: "image_url", image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ],
-                    max_tokens: 200,
-                    temperature: 0.2,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`OpenAI Vision API 오류: ${response.status}`);
-            }
-
-            const data = await response.json();
-            console.log('✅ Fallback OpenAI Vision API 응답 완료');
-            return data.choices[0].message.content;
-            
-        } catch (fallbackError) {
-            console.error('❌ Fallback Vision API도 실패:', fallbackError);
-            throw error; // 원본 에러 던지기
-        }
+        console.error('❌ GPT-4o Vision API 호출 실패:', error);
+        throw error;
     }
 }
 
-// 아이디어 분석 (텍스트 처리) - Gemini로 교체
+// 아이디어 분석 (텍스트 처리) - GPT-4o 사용
 export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDescription, visionResult, referenceResult = null, sliderValue = 1) {
     try {
-        console.log('🔮 Gemini 아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
+        console.log('GPT-4o 아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
         
         let prompt;
         if (additiveType === 'aesthetics' && referenceResult) {
@@ -666,68 +573,21 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
         const temperature = Math.min(rawTemperature, 0.4); // 형식 안정성을 위해 0.4로 캡
         console.log('Temperature 설정:', temperature, '(원본:', rawTemperature, ')');
 
-        try {
-            // Gemini API 사용 (JSON 강제)
-            const responseText = await callGeminiTextAPI(prompt, true, temperature, 1800);
-            
-            console.log('원본 응답 길이:', responseText.length);
-            
-            // 방어적 JSON 파싱
-            const result = parseJsonSafely(responseText);
-            
-            console.log('JSON 파싱 성공, 구조 검증 시작...');
-            
-            // 구조 검증 및 보정
-            const validatedResult = validateAndFixStructure(result, additiveType);
-            
-            console.log('구조 검증 및 보정 완료');
-            return validatedResult;
-            
-        } catch (geminiError) {
-            console.error('Gemini API 실패, OpenAI로 Fallback:', geminiError);
-            
-            // Fallback: OpenAI 사용
-            const response = await fetch(API_URL, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${API_KEY}`,
-                },
-                body: JSON.stringify({
-                    model: "gpt-4o-mini", 
-                    messages: [
-                        { 
-                            role: "system", 
-                            content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요." 
-                        },
-                        { 
-                            role: "user", 
-                            content: prompt 
-                        }
-                    ],
-                    max_tokens: 1800, 
-                    temperature: temperature,
-                    response_format: { type: "json_object" }
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Fallback OpenAI API 오류: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const responseText = data.choices[0].message.content.trim();
-            
-            try {
-                const result = parseJsonSafely(responseText);
-                const validatedResult = validateAndFixStructure(result, additiveType);
-                console.log('✅ Fallback OpenAI로 성공');
-                return validatedResult;
-            } catch (parseError) {
-                console.error('JSON 파싱 실패:', parseError);
-                return getFallbackStructure(additiveType);
-            }
-        }
+        // GPT-4o API 사용 (JSON 강제)
+        const responseText = await callGPTTextAPI(prompt, true, temperature, 1800);
+        
+        console.log('원본 응답 길이:', responseText.length);
+        
+        // 방어적 JSON 파싱
+        const result = parseJsonSafely(responseText);
+        
+        console.log('JSON 파싱 성공, 구조 검증 시작...');
+        
+        // 구조 검증 및 보정
+        const validatedResult = validateAndFixStructure(result, additiveType);
+        
+        console.log('구조 검증 및 보정 완료');
+        return validatedResult;
         
     } catch (error) {
         console.error('아이디어 생성 API 호출 실패:', error);
@@ -737,56 +597,17 @@ export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDesc
     }
 }
 
-// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API) - Gemini로 교체
+// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API) - GPT-4o 사용
 export async function analyzeReferenceImage(imageUrl) {
   try {
-    console.log('🔍 Gemini 레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
+    console.log('GPT-4o 레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
     
     const prompt = "당신은 디자인 전문가입니다. 제공된 레퍼런스 이미지의 심미적 특징을 분석하세요. 이 레퍼런스 이미지의 디자인 형태, 색상, 재질, 스타일적 특징을 간결하게 설명해 주세요.";
     
-    try {
-      // Gemini Vision API 사용
-      const analysisResult = await callGeminiVisionAPI(imageUrl, prompt);
-      console.log('✅ Gemini 레퍼런스 이미지 분석 완료');
-      return analysisResult;
-      
-    } catch (geminiError) {
-      console.error('Gemini 레퍼런스 분석 실패, OpenAI로 Fallback:', geminiError);
-      
-      // Fallback: OpenAI 사용
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o", 
-          messages: [
-            {
-              role: "system",
-              content: "당신은 디자인 전문가입니다. 제공된 레퍼런스 이미지의 심미적 특징을 분석하세요."
-            },
-            {
-              role: "user",
-              content: [
-                { type: "text", text: "이 레퍼런스 이미지의 디자인 형태, 색상, 재질, 스타일적 특징을 간결하게 설명해 주세요." },
-                { type: "image_url", image_url: { url: imageUrl } }
-              ]
-            }
-          ],
-          max_tokens: 200,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Fallback 레퍼런스 이미지 분석 API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('✅ Fallback 레퍼런스 이미지 분석 완료');
-      return data.choices[0].message.content;
-    }
+    // GPT-4o Vision API 사용
+    const analysisResult = await callGPTVisionAPI(imageUrl, prompt);
+    console.log('GPT-4o 레퍼런스 이미지 분석 완료');
+    return analysisResult;
     
   } catch (error) {
     console.error('레퍼런스 이미지 분석 실패:', error);
@@ -794,10 +615,10 @@ export async function analyzeReferenceImage(imageUrl) {
   }
 }
 
-// Vision 분석 결과와 제목, 내용을 바탕으로 제품 태그 생성 - Gemini로 교체
+// Vision 분석 결과와 제목, 내용을 바탕으로 제품 태그 생성 - GPT-4o 사용
 export async function generateProductTag(visionAnalysis, title = '', description = '') {
   try {
-    console.log('🏷️ Gemini 제품 카테고리 분석 중...', { title, description, visionAnalysis });
+    console.log('GPT-4o 제품 카테고리 분석 중...', { title, description, visionAnalysis });
     
     const tagPrompt = `당신은 제품 카테고리 분석 전문가입니다. 
 주어진 정보를 종합적으로 분석하여 적절한 카테고리 태그를 생성하세요.
@@ -828,59 +649,18 @@ ${visionAnalysis || '이미지 분석 없음'}
 
 태그:`;
 
-    try {
-      // Gemini API 사용
-      const response = await callGeminiTextAPI(tagPrompt, false, 0.2, 30);
-      let tag = response.trim();
-      
-      // 불필요한 텍스트 제거
-      tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
-      
-      // 태그가 #으로 시작하지 않으면 추가
-      const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
-      
-      console.log('✅ Gemini 카테고리 분석 완료:', finalTag);
-      return finalTag;
-      
-    } catch (geminiError) {
-      console.error('Gemini 태그 생성 실패, OpenAI로 Fallback:', geminiError);
-      
-      // Fallback: OpenAI 사용
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user", 
-              content: tagPrompt
-            }
-          ],
-          max_tokens: 30,
-          temperature: 0.2,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Fallback 태그 생성 API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-      let tag = data.choices[0].message.content.trim();
-      
-      // 불필요한 텍스트 제거
-      tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
-      
-      // 태그가 #으로 시작하지 않으면 추가
-      const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
-      
-      console.log('✅ Fallback 카테고리 분석 완료:', finalTag);
-      return finalTag;
-    }
+    // GPT-4o API 사용
+    const response = await callGPTTextAPI(tagPrompt, false, 0.2, 30);
+    let tag = response.trim();
+    
+    // 불필요한 텍스트 제거
+    tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
+    
+    // 태그가 #으로 시작하지 않으면 추가
+    const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
+    
+    console.log('GPT-4o 카테고리 분석 완료:', finalTag);
+    return finalTag;
     
   } catch (error) {
     console.error('태그 생성 실패:', error);
@@ -888,10 +668,10 @@ ${visionAnalysis || '이미지 분석 없음'}
   }
 }
 
-// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성 - Gemini로 교체
+// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성 - GPT-4o 사용
 export async function generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType) {
   try {
-    console.log('🔮 Gemini 개선된 제품 정보 생성 중...');
+    console.log('GPT-4o 개선된 제품 정보 생성 중...');
     
     const improvePrompt = `역할: 당신은 제품 디자인 전문가입니다. 분석 결과를 바탕으로 개선된 제품 정보를 JSON으로 반환하세요.
 
@@ -913,98 +693,24 @@ ${stepsData.map(step => `Step ${step.stepNumber}: ${step.title}\n${step.descript
 - description: 어떤 점이 개선되었는지 구체적 설명 (3-4문장)
 - JSON 외 텍스트 절대 금지, 줄바꿈은 공백으로 대체`;
 
-    try {
-      // Gemini API 사용 (JSON 강제)
-      const responseText = await callGeminiTextAPI(improvePrompt, true, 0.2, 400);
-      
-      console.log('응답 길이:', responseText.length);
-      
-      const result = JSON.parse(responseText);
-      
-      // 결과 검증 및 정리
-      if (!result.title || !result.description) {
-        throw new Error('필수 필드가 누락되었습니다');
-      }
-      
-      // 텍스트 정리 (줄바꿈 제거)
-      result.title = result.title.replace(/[\n\r]/g, ' ').trim();
-      result.description = result.description.replace(/[\n\r]/g, ' ').trim();
-      
-      console.log('✅ Gemini 파싱 및 검증 성공:', result);
-      return result;
-      
-    } catch (geminiError) {
-      console.error('Gemini 제품 정보 생성 실패, OpenAI로 Fallback:', geminiError);
-      
-      // Fallback: OpenAI 사용
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: "항상 유효한 JSON 객체만 반환하세요. 코드블록, 설명, 기타 텍스트는 절대 포함하지 마세요."
-            },
-            {
-              role: "user",
-              content: improvePrompt
-            }
-          ],
-          max_tokens: 400,
-          temperature: 0.2,
-          response_format: { type: "json_object" }
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Fallback 개선된 제품 정보 생성 API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-      let responseText = data.choices[0].message.content.trim();
-      
-      try {
-        const result = JSON.parse(responseText);
-        
-        // 결과 검증 및 정리
-        if (!result.title || !result.description) {
-          throw new Error('필수 필드가 누락되었습니다');
-        }
-        
-        // 텍스트 정리 (줄바꿈 제거)
-        result.title = result.title.replace(/[\n\r]/g, ' ').trim();
-        result.description = result.description.replace(/[\n\r]/g, ' ').trim();
-        
-        console.log('✅ Fallback 파싱 및 검증 성공:', result);
-        return result;
-        
-      } catch (parseError) {
-        console.error('JSON 파싱 실패:', parseError);
-        
-        // 간단한 복구 시도
-        const titleMatch = responseText.match(/"title"\s*:\s*"([^"]+)"/);
-        const descMatch = responseText.match(/"description"\s*:\s*"([^"]+)"/);
-        
-        if (titleMatch && descMatch) {
-          return {
-            title: titleMatch[1].trim(),
-            description: descMatch[1].trim()
-          };
-        }
-        
-        // 최종 실패 시 기본값 반환
-        const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
-        return {
-          title: `${typeNames[additiveType] || '개선된'} ${originalTitle}`,
-          description: `${typeNames[additiveType] || '분석'} 첨가제를 통해 개선된 제품이에요.`
-        };
-      }
+    // GPT-4o API 사용 (JSON 강제)
+    const responseText = await callGPTTextAPI(improvePrompt, true, 0.2, 400);
+    
+    console.log('응답 길이:', responseText.length);
+    
+    const result = JSON.parse(responseText);
+    
+    // 결과 검증 및 정리
+    if (!result.title || !result.description) {
+      throw new Error('필수 필드가 누락되었습니다');
     }
+    
+    // 텍스트 정리 (줄바꿈 제거)
+    result.title = result.title.replace(/[\n\r]/g, ' ').trim();
+    result.description = result.description.replace(/[\n\r]/g, ' ').trim();
+    
+    console.log('GPT-4o 파싱 및 검증 성공:', result);
+    return result;
     
   } catch (error) {
     console.error('개선된 제품 정보 생성 실패:', error);
@@ -1019,24 +725,53 @@ ${stepsData.map(step => `Step ${step.stepNumber}: ${step.title}\n${step.descript
 
 // 제품 타입 검증 및 보정 함수
 const validateAndFixProductType = (stabilityPrompt, title, description) => {
+  // 원본 제품 타입 찾기 - 더 포괄적인 매핑
+  let correctProductType = 'product';
+  let productKeywords = [];
+  
+  for (const [korean, englishTerms] of Object.entries(PRODUCT_TYPE_MAPPING)) {
+    if (title.includes(korean) || description.includes(korean)) {
+      correctProductType = englishTerms[0]; // 첫 번째 영어 용어 사용
+      productKeywords = englishTerms;
+      break;
+    }
+  }
+  
+  // 청소기 관련 특별 처리
+  if (title.includes('청소기') || description.includes('청소기') || 
+      title.includes('진공청소기') || description.includes('진공청소기')) {
+    correctProductType = 'vacuum cleaner';
+    productKeywords = ['vacuum cleaner', 'cleaning appliance', 'suction device'];
+  }
+  
   // 잘못된 제품이 언급되었는지 확인
   const hasUnwantedItems = UNWANTED_PRODUCT_KEYWORDS.some(item => 
     stabilityPrompt.toLowerCase().includes(item.toLowerCase())
   );
   
-  // 원본 제품 타입 찾기
-  let correctProductType = 'product';
-  for (const [korean, englishTerms] of Object.entries(PRODUCT_TYPE_MAPPING)) {
-    if (title.includes(korean) || description.includes(korean)) {
-      correctProductType = englishTerms[0]; // 첫 번째 영어 용어 사용
-      break;
-    }
-  }
-  
   // 잘못된 아이템이 감지되면 프롬프트 재구성
   if (hasUnwantedItems) {
     console.warn('잘못된 제품 타입 감지, 프롬프트 재구성 중...');
-    return `Full product view of ${correctProductType} based on "${title}", ${description.substring(0, 50)}..., completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`;
+    let fixedPrompt = stabilityPrompt;
+    
+    // 잘못된 키워드들을 올바른 제품 타입으로 교체
+    UNWANTED_PRODUCT_KEYWORDS.forEach(unwanted => {
+      const regex = new RegExp(`\\b${unwanted}\\b`, 'gi');
+      fixedPrompt = fixedPrompt.replace(regex, correctProductType);
+    });
+    
+    return fixedPrompt;
+  }
+  
+  // 제품 타입 키워드가 프롬프트에 포함되어 있는지 확인
+  const hasProductKeywords = productKeywords.some(keyword => 
+    stabilityPrompt.toLowerCase().includes(keyword.toLowerCase())
+  );
+  
+  // 제품 타입 키워드가 없으면 추가
+  if (!hasProductKeywords && correctProductType !== 'product') {
+    console.log(`제품 타입 키워드 추가: ${correctProductType}`);
+    return `${correctProductType}, ${stabilityPrompt}`;
   }
   
   return stabilityPrompt;
@@ -1062,12 +797,12 @@ const addEssentialKeywords = (stabilityPrompt) => {
 };
 
 // =============================================================================
-// API 함수 2: 이미지 생성 프롬프트 최적화 (Gemini로 교체)
+// API 함수 2: 이미지 생성 프롬프트 최적화 (GPT-4o 사용)
 // =============================================================================
 export async function generateStabilityPrompt(title, description, visionResult, originalImageUrl = null) {
   try {
-    console.log('🎨 Gemini 이미지 생성 프롬프트 최적화 중...');
-    console.log('📝 입력 데이터:');
+    console.log('GPT-4o 이미지 생성 프롬프트 최적화 중...');
+    console.log('입력 데이터:');
     console.log('- 제품 제목:', title);
     console.log('- 제품 설명:', description.substring(0, 100) + '...');
     console.log('- Vision 분석 유무:', !!visionResult);
@@ -1079,83 +814,36 @@ export async function generateStabilityPrompt(title, description, visionResult, 
       .replace('{VISION_ANALYSIS}', visionResult ? `Vision Analysis: ${visionResult}` : 'No additional vision analysis available')
       .replace('{REFERENCE_IMAGE_INFO}', originalImageUrl ? '### Reference Image Available\nA reference image will be provided to maintain visual consistency with the original idea.' : '');
 
-    console.log('📤 Gemini로 전송할 프롬프트 길이:', translatePrompt.length);
+    console.log('GPT-4o로 전송할 프롬프트 길이:', translatePrompt.length);
 
-    try {
-      // Gemini API 사용
-      const response = await callGeminiTextAPI(translatePrompt, false, 0.3, 200);
-      let stabilityPrompt = response.trim();
-      
-      // 불필요한 따옴표나 설명 제거
-      stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
-      
-      console.log('🔍 원본 프롬프트 검증 중...');
-      console.log('📄 생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
-      
-      // 제품 타입 검증 및 보정
-      stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
-      
-      // 필수 키워드 추가
-      stabilityPrompt = addEssentialKeywords(stabilityPrompt);
-      
-      console.log('✅ 최종 Gemini 프롬프트:', stabilityPrompt);
-      return stabilityPrompt;
-      
-    } catch (geminiError) {
-      console.error('Gemini 프롬프트 생성 실패, OpenAI로 Fallback:', geminiError);
-      
-      // Fallback: OpenAI 사용
-      const response = await fetch(API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "user",
-              content: translatePrompt
-            }
-          ],
-          max_tokens: 200,
-          temperature: 0.3,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Fallback Stability 프롬프트 생성 API 오류: ${response.status}`);
-      }
-
-      const data = await response.json();
-      let stabilityPrompt = data.choices[0].message.content.trim();
-      
-      // 불필요한 따옴표나 설명 제거
-      stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
-      
-      console.log('🔍 Fallback 프롬프트 검증 중...');
-      console.log('📄 생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
-      
-      // 제품 타입 검증 및 보정
-      stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
-      
-      // 필수 키워드 추가
-      stabilityPrompt = addEssentialKeywords(stabilityPrompt);
-      
-      console.log('✅ 최종 Fallback 프롬프트:', stabilityPrompt);
-      return stabilityPrompt;
-    }
+    // GPT-4o API 사용
+    const response = await callGPTTextAPI(translatePrompt, false, 0.3, 200);
+    let stabilityPrompt = response.trim();
+    
+    // 불필요한 따옴표나 설명 제거
+    stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
+    
+    console.log('원본 프롬프트 검증 중...');
+    console.log('생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
+    
+    // 제품 타입 검증 및 보정
+    stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
+    
+    // 필수 키워드 추가
+    stabilityPrompt = addEssentialKeywords(stabilityPrompt);
+    
+    console.log('최종 GPT-4o 프롬프트:', stabilityPrompt);
+    return stabilityPrompt;
     
   } catch (error) {
     console.error('프롬프트 생성 실패:', error);
     // 실패 시 기본 프롬프트 반환 (원본 제품 정보 기반)
     const productType = title.toLowerCase().includes('의자') ? 'chair' : 
-                       title.toLowerCase().includes('벤치') ? 'bench' :
-                       title.toLowerCase().includes('테이블') ? 'table' :
-                       title.toLowerCase().includes('램프') ? 'lamp' :
-                       title.toLowerCase().includes('선반') ? 'shelf' :
-                       'product';
+                        title.toLowerCase().includes('벤치') ? 'bench' :
+                        title.toLowerCase().includes('테이블') ? 'table' :
+                        title.toLowerCase().includes('램프') ? 'lamp' :
+                        title.toLowerCase().includes('선반') ? 'shelf' :
+                        'product';
     
     const fallbackPrompt = `Full product view of ${productType} based on "${title}", completely visible, not cropped, proper framing, adequate spacing around product, professional product photography, modern design, clean materials, clean white background, studio lighting, commercial quality, high resolution`;
     console.log('Fallback 프롬프트 사용:', fallbackPrompt);
@@ -1163,50 +851,80 @@ export async function generateStabilityPrompt(title, description, visionResult, 
   }
 }
 
-// Gemini Imagen으로 제품 이미지 생성 (Stability AI 대체)
+// Stability AI로 제품 이미지 생성
 export async function generateProductImageWithStability(promptText, originalImageUrl = null) {
   try {
-    console.log('🎨 Gemini Imagen 이미지 생성 시작...');
+    console.log('Stability AI 이미지 생성 시작...');
     console.log('사용할 프롬프트:', promptText);
     
-    try {
-      // Gemini Imagen API 사용
-      const imageUrl = await callGeminiImageGenerationAPI(promptText);
-      console.log('✅ Gemini Imagen 이미지 생성 완료');
-      return imageUrl;
-      
-    } catch (geminiError) {
-      console.error('Gemini Imagen 실패, Stability AI로 Fallback:', geminiError);
-      
-      // Fallback: Stability AI 사용
-      if (!STABILITY_API_KEY) {
-        throw new Error('Stability AI API 키가 설정되지 않았습니다.');
-      }
-      
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('prompt', promptText);
-      formData.append('mode', 'text-to-image');
-      formData.append('model', 'sd3.5-large'); // 최신 고품질 모델
-      formData.append('aspect_ratio', '1:1');
-      formData.append('output_format', 'png');
-      
-      // 참조 이미지가 있는 경우 추가
-      if (originalImageUrl) {
-        try {
-          // 원본 이미지 URL에서 이미지 데이터 가져오기
+    if (!STABILITY_API_KEY) {
+      throw new Error('Stability AI API 키가 설정되지 않았습니다.');
+    }
+    
+    // FormData 생성
+    const formData = new FormData();
+    formData.append('prompt', promptText);
+    formData.append('mode', 'text-to-image');
+    formData.append('model', 'sd3.5-large'); // 최신 고품질 모델
+    formData.append('aspect_ratio', '1:1');
+    formData.append('output_format', 'png');
+    
+    // 참조 이미지가 있는 경우 추가
+    if (originalImageUrl) {
+      try {
+        // 프록시를 사용한 이미지 로드 시도 (개발 환경)
+        let imageBlob;
+        if (USE_PROXY && /^https?:\/\/firebasestorage\.googleapis\.com/.test(originalImageUrl)) {
+          console.log('🌐 참조 이미지 프록시 로드 시도');
+          const dataUrl = await loadImageViaProxy(originalImageUrl);
+          const response = await fetch(dataUrl);
+          imageBlob = await response.blob();
+        } else {
+          // 일반 fetch
           const imageResponse = await fetch(originalImageUrl);
           if (imageResponse.ok) {
-            const imageBlob = await imageResponse.blob();
-            formData.append('image', imageBlob, 'reference.png');
-            formData.append('strength', '0.35'); // 참조 이미지 영향도 (0.1-1.0)
-            console.log('참조 이미지 추가됨');
+            imageBlob = await imageResponse.blob();
           }
-        } catch (imageError) {
-          console.warn('참조 이미지 로드 실패, 텍스트만으로 생성:', imageError.message);
         }
+        
+        if (imageBlob) {
+          formData.append('image', imageBlob, 'reference.png');
+          formData.append('strength', '0.35'); // 참조 이미지 영향도 (0.1-1.0)
+          console.log('참조 이미지 추가됨');
+        }
+      } catch (imageError) {
+        console.warn('참조 이미지 로드 실패, 텍스트만으로 생성:', imageError.message);
       }
+    }
 
+    // 개발 환경에서 프록시 사용 시도
+    let imageBuffer;
+    if (USE_PROXY) {
+      try {
+        console.log('개발 환경 - Stability AI 프록시 사용');
+        imageBuffer = await callStabilityViaProxy(formData);
+        console.log('프록시 Stability AI 성공');
+      } catch (proxyError) {
+        console.warn('프록시 실패, 직접 API 호출로 fallback:', proxyError.message);
+        // 프록시 실패 시 직접 API 호출
+        const response = await fetch(STABILITY_API_URL, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${STABILITY_API_KEY}`,
+            "Accept": "image/*"
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Stability AI API 오류: ${response.status} - ${errorText}`);
+        }
+
+        imageBuffer = await response.arrayBuffer();
+      }
+    } else {
+      // 프로덕션 환경 - 직접 API 호출
       const response = await fetch(STABILITY_API_URL, {
         method: "POST",
         headers: {
@@ -1218,27 +936,26 @@ export async function generateProductImageWithStability(promptText, originalImag
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Fallback Stability AI API 오류 상세:', errorText);
-        console.error('❌ HTTP 상태:', response.status);
-        throw new Error(`Fallback Stability AI API 오류: ${response.status} - ${errorText}`);
+        console.error('Stability AI API 오류 상세:', errorText);
+        console.error('HTTP 상태:', response.status);
+        throw new Error(`Stability AI API 오류: ${response.status} - ${errorText}`);
       }
 
-      // 이미지 데이터를 Base64로 변환
-      const imageBuffer = await response.arrayBuffer();
-      const base64Image = btoa(
-        new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-      const dataUrl = `data:image/png;base64,${base64Image}`;
-      
-      console.log('✅ Fallback Stability AI 이미지 생성 완료');
-      return dataUrl;
+      imageBuffer = await response.arrayBuffer();
     }
+    const base64Image = btoa(
+      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+    const dataUrl = `data:image/png;base64,${base64Image}`;
+    
+    console.log('Stability AI 이미지 생성 완료');
+    return dataUrl;
     
   } catch (error) {
-    console.error('❌ 이미지 생성 실패:', error);
-    console.error('❌ 오류 타입:', error.name);
-    console.error('❌ 오류 메시지:', error.message);
-    console.error('❌ 사용된 프롬프트:', promptText.substring(0, 200) + '...');
+    console.error('이미지 생성 실패:', error);
+    console.error('오류 타입:', error.name);
+    console.error('오류 메시지:', error.message);
+    console.error('사용된 프롬프트:', promptText.substring(0, 200) + '...');
     throw error;
   }
 }
@@ -1248,7 +965,7 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
   let improvedInfo = null;
   
   // 디버깅 로그 추가
-  console.log('🔍 통합 함수 호출 - 입력 파라미터:');
+  console.log('통합 함수 호출 - 입력 파라미터:');
   console.log('- 원본 제목:', originalTitle);
   console.log('- 원본 설명:', originalDescription.substring(0, 100) + '...');
   console.log('- 첨가제 타입:', additiveType);
@@ -1260,12 +977,12 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
     
     // 1. 개선된 제품 정보 생성
     improvedInfo = await generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType);
-    console.log('✅ 개선된 제품 정보 생성 성공');
+    console.log('개선된 제품 정보 생성 성공');
     
     try {
       // 2. Stability AI용 프롬프트 생성
-      console.log('🔄 Stability AI 프롬프트 생성 중...');
-      console.log('📝 프롬프트 생성용 데이터:');
+      console.log('Stability AI 프롬프트 생성 중...');
+      console.log('프롬프트 생성용 데이터:');
       console.log('- 개선된 제목:', improvedInfo.title);
       console.log('- 개선된 설명:', improvedInfo.description.substring(0, 100) + '...');
       console.log('- Vision 결과:', visionResult ? visionResult.substring(0, 100) + '...' : 'None');
@@ -1276,40 +993,62 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
         visionResult, 
         originalImageUrl
       );
-      console.log('✅ Stability AI 프롬프트 생성 성공');
-      console.log('🎯 최종 생성된 프롬프트:', stabilityPrompt);
+      console.log('Stability AI 프롬프트 생성 성공');
+      console.log('최종 생성된 프롬프트:', stabilityPrompt);
       
       // 3. Stability AI로 이미지 생성 (원본 이미지가 있으면 img2img 사용)
-      console.log('🎨 Stability AI 이미지 생성 중...');
+      console.log('Stability AI 이미지 생성 중...');
       let imageUrl;
       
       if (originalImageUrl && originalImageUrl.startsWith('data:image/')) {
-        // img2img 사용 (원본 이미지가 data URL인 경우)
-        console.log('🔄 IMG2IMG 모드 사용 - 원본 이미지 기반 개선');
-        imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, originalImageUrl, 0.7);
+        // img2img 사용 (원본 이미지가 data URL인 경우) - 강도를 낮춰서 원본 특성 더 유지
+        console.log('IMG2IMG 모드 사용 - 원본 이미지 기반 개선 (강도: 0.5)');
+        imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, originalImageUrl, 0.5);
       } else if (originalImageUrl && (originalImageUrl.startsWith('http://') || originalImageUrl.startsWith('https://'))) {
-        // Firebase Storage URL을 data URL로 변환 후 img2img 사용
-        console.log('🔄 IMG2IMG 모드 사용 - Firebase URL을 data URL로 변환 후 처리');
+        // Firebase Storage URL을 프록시를 통해 data URL로 변환 후 img2img 사용
+        console.log('IMG2IMG 모드 사용 - 프록시를 통한 Firebase URL 처리 (강도: 0.5)');
         try {
-          const response = await fetch(originalImageUrl);
-          const blob = await response.blob();
-          const dataUrl = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.readAsDataURL(blob);
-          });
-          imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, dataUrl, 0.7);
+          // 프록시를 사용한 이미지 로드 시도
+          let dataUrl;
+          console.log('URL 패턴 분석:', originalImageUrl.substring(0, 100) + '...');
+          
+          const isFirebaseStorage = /^https?:\/\/(firebasestorage\.googleapis\.com|.*\.firebasestorage\.app)/.test(originalImageUrl);
+          const isFirebaseApp = originalImageUrl.includes('.firebasestorage.app');
+          const isFirebaseApi = originalImageUrl.includes('firebasestorage.googleapis.com');
+          
+          console.log('URL 분석 결과:');
+          console.log('  - isFirebaseStorage:', isFirebaseStorage);
+          console.log('  - isFirebaseApp:', isFirebaseApp);
+          console.log('  - isFirebaseApi:', isFirebaseApi);
+          
+          if (isFirebaseStorage) {
+            console.log('Firebase Storage URL 감지 - 프록시 사용');
+            dataUrl = await loadImageWithCORSWorkaround(originalImageUrl);
+          } else {
+            console.log('일반 URL - 직접 로드 시도');
+            const response = await fetch(originalImageUrl);
+            const blob = await response.blob();
+            dataUrl = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+          }
+          
+          console.log('data URL 변환 완료, img2img 시작');
+          imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, dataUrl, 0.5);
         } catch (fetchError) {
-          console.warn('Firebase URL 변환 실패, text-to-image로 대체:', fetchError);
+          console.warn('이미지 URL 변환 실패, text-to-image로 대체:', fetchError);
+          console.warn('오류 상세:', fetchError.message);
           imageUrl = await generateProductImageWithStability(stabilityPrompt);
         }
       } else {
         // 일반 text-to-image 사용
-        console.log('🔄 TEXT-TO-IMAGE 모드 사용');
+        console.log('TEXT-TO-IMAGE 모드 사용');
         imageUrl = await generateProductImageWithStability(stabilityPrompt);
       }
       
-      console.log('✅ Stability AI 이미지 생성 성공');
+      console.log('Stability AI 이미지 생성 성공');
       
       return {
         ...improvedInfo,
@@ -1319,7 +1058,7 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
       };
       
     } catch (imageError) {
-      console.error('❌ Stability AI 이미지 생성 실패:', imageError);
+      console.error('Stability AI 이미지 생성 실패:', imageError);
       
       // 이미지 생성 실패 시 null로 명시적 표시 (원본 이미지 대체하지 않음)
       return {
@@ -1332,7 +1071,7 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
     }
     
   } catch (error) {
-    console.error('❌ 통합 제품 생성 완전 실패:', error);
+    console.error('통합 제품 생성 완전 실패:', error);
     
     // 제품 정보 생성도 실패한 경우
     if (!improvedInfo) {
@@ -1350,10 +1089,10 @@ export async function generateImprovedProductWithImage(originalTitle, originalDe
   }
 }
 
-// IFL(랜덤 아이디어 생성) 함수 - Gemini로 교체
+// IFL(랜덤 아이디어 생성) 함수 - GPT-4o 사용
 export const generateRandomIdea = async (userPrompt) => {
   try {
-    console.log('🔮 Gemini 랜덤 아이디어 생성 시작:', userPrompt);
+    console.log('GPT-4o 랜덤 아이디어 생성 시작:', userPrompt);
     
     const prompt = `당신은 창의적인 제품 디자인 전문가입니다. 
 사용자가 입력한 키워드를 바탕으로 혁신적이고 실용적인 제품 아이디어를 생성해주세요.
@@ -1383,85 +1122,18 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
 
 창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
 
-    try {
-      // Gemini API 사용 (JSON 강제)
-      const responseText = await callGeminiTextAPI(prompt, true, 0.8, 500);
-      
-      // JSON 파싱
-      const ideaData = JSON.parse(responseText);
-      
-      console.log('✅ Gemini 랜덤 아이디어 생성 완료');
-      return {
-        title: ideaData.title || '새로운 아이디어',
-        description: ideaData.description || '혁신적인 제품 아이디어입니다.',
-        imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
-      };
-      
-    } catch (geminiError) {
-      console.error('Gemini 랜덤 아이디어 생성 실패, OpenAI로 Fallback:', geminiError);
-      
-      // Fallback: OpenAI 사용
-      if (!API_KEY) {
-        throw new Error('OpenAI API 키가 설정되지 않았습니다.');
-      }
-
-      const fallbackPrompt = `당신은 창의적인 제품 디자인 전문가입니다. 
-사용자가 입력한 키워드를 바탕으로 혁신적이고 실용적인 제품 아이디어를 생성해주세요.
-
-키워드: ${userPrompt}
-
-다음 JSON 형식으로 응답해주세요:
-{
-  "title": "제품 이름 (간결하고 창의적인 한글로)",
-  "description": "제품에 대한 상세한 설명 (기능, 사용법, 특징을 포함하여 3-4문장으로, 한글로)",
-  "imagePrompt": "이미지 생성을 위한 영어 프롬프트 (제품이 잘리지 않도록 'full product view, completely visible, not cropped, proper framing' 등의 키워드 포함)"
-}
-
-중요한 요구사항:
-- title과 description은 반드시 한글로 작성하세요
-- 제품명은 한국인이 이해하기 쉬운 한글 이름으로 지어주세요
-- 설명도 모두 한글로 작성하고, 친근하고 이해하기 쉽게 써주세요
-- imagePrompt만 영어로 작성하세요
-- 실제로 존재할 법한 현실적이고 유용한 제품을 제안하세요
-
-창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
-
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4',
-          messages: [{ role: 'user', content: fallbackPrompt }],
-          temperature: 0.8,
-          max_tokens: 500
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Fallback GPT API 요청 실패: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0].message.content;
-      
-      // JSON 파싱
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('GPT 응답에서 JSON을 찾을 수 없습니다.');
-      }
-      
-      const ideaData = JSON.parse(jsonMatch[0]);
-      
-      console.log('✅ Fallback 랜덤 아이디어 생성 완료');
-      return {
-        title: ideaData.title || '새로운 아이디어',
-        description: ideaData.description || '혁신적인 제품 아이디어입니다.',
-        imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
-      };
-    }
+    // GPT-4o API 사용 (JSON 강제)
+    const responseText = await callGPTTextAPI(prompt, true, 0.8, 500);
+    
+    // JSON 파싱
+    const ideaData = JSON.parse(responseText);
+    
+    console.log('GPT-4o 랜덤 아이디어 생성 완료');
+    return {
+      title: ideaData.title || '새로운 아이디어',
+      description: ideaData.description || '혁신적인 제품 아이디어입니다.',
+      imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
+    };
     
   } catch (error) {
     console.error('랜덤 아이디어 생성 실패:', error);
@@ -1469,10 +1141,10 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
   }
 };
 
-// Gemini Imagen 이미지 생성 함수 (IFL용)
+// Stability AI 이미지 생성 함수 (IFL용)
 export const generateImage = async (prompt) => {
   try {
-    console.log('🎨 Gemini Imagen 이미지 생성 (IFL):', prompt);
+    console.log('Stability AI 이미지 생성 (IFL):', prompt);
     
     // 잘못된 제품 키워드 감지
     const unwantedItems = ['phone', 'iphone', 'smartphone', 'monitor', 'screen', 'display', 'computer', 'laptop', 'tablet'];
@@ -1492,51 +1164,40 @@ export const generateImage = async (prompt) => {
       enhancedPrompt = `Full product view, completely visible, ${enhancedPrompt}, not cropped, proper framing, adequate spacing around product`;
     }
     
-    try {
-      // Gemini Imagen API 사용
-      const imageUrl = await callGeminiImageGenerationAPI(enhancedPrompt);
-      console.log('✅ Gemini Imagen 이미지 생성 (IFL) 완료');
-      return imageUrl;
-      
-    } catch (geminiError) {
-      console.error('Gemini Imagen 실패, Stability AI로 Fallback:', geminiError);
-      
-      // Fallback: Stability AI 사용
-      if (!STABILITY_API_KEY) {
-        throw new Error('Stability AI API 키가 설정되지 않았습니다.');
-      }
-
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('prompt', enhancedPrompt);
-      formData.append('mode', 'text-to-image');
-      formData.append('model', 'sd3.5-large');
-      formData.append('aspect_ratio', '1:1');
-      formData.append('output_format', 'png');
-
-      const response = await fetch(STABILITY_API_URL, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${STABILITY_API_KEY}`,
-          'Accept': 'image/*'
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Fallback Stability AI API 요청 실패: ${response.status} - ${errorText}`);
-      }
-
-      // 이미지 데이터를 Base64로 변환
-      const imageBuffer = await response.arrayBuffer();
-      const base64Image = btoa(
-        new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-      );
-      
-      console.log('✅ Fallback Stability AI 이미지 생성 (IFL) 완료');
-      return `data:image/png;base64,${base64Image}`;
+    if (!STABILITY_API_KEY) {
+      throw new Error('Stability AI API 키가 설정되지 않았습니다.');
     }
+
+    // FormData 생성
+    const formData = new FormData();
+    formData.append('prompt', enhancedPrompt);
+    formData.append('mode', 'text-to-image');
+    formData.append('model', 'sd3.5-large');
+    formData.append('aspect_ratio', '1:1');
+    formData.append('output_format', 'png');
+
+    const response = await fetch(STABILITY_API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${STABILITY_API_KEY}`,
+        'Accept': 'image/*'
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Stability AI API 요청 실패: ${response.status} - ${errorText}`);
+    }
+
+    // 이미지 데이터를 Base64로 변환
+    const imageBuffer = await response.arrayBuffer();
+    const base64Image = btoa(
+      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+    );
+    
+    console.log('Stability AI 이미지 생성 (IFL) 완료');
+    return `data:image/png;base64,${base64Image}`;
     
   } catch (error) {
     console.error('이미지 생성 실패:', error);
@@ -1557,10 +1218,10 @@ export const generateImage = async (prompt) => {
  */
 export const generateProductImageWithStability_I2I = async (prompt, imageUrl, strength = 0.7) => {
   try {
-    console.log('IFL: Stability AI img2img 생성 시작');
-    console.log('IFL: 프롬프트:', prompt.substring(0, 100) + '...');
-    console.log('IFL: 입력 이미지 길이:', imageUrl?.length || 0);
-    console.log('IFL: 변형 강도:', strength);
+    console.log('Stability AI img2img 생성 시작');
+    console.log('프롬프트:', prompt.substring(0, 100) + '...');
+    console.log('입력 이미지 길이:', imageUrl?.length || 0);
+    console.log('변형 강도:', strength);
 
     if (!STABILITY_API_KEY) {
       throw new Error('Stability AI API 키가 설정되지 않았습니다');
@@ -1574,43 +1235,60 @@ export const generateProductImageWithStability_I2I = async (prompt, imageUrl, st
     const response = await fetch(imageUrl);
     const blob = await response.blob();
 
-    // 잘못된 제품 키워드 감지 및 프롬프트 개선
-    const unwantedItems = ['phone', 'iphone', 'smartphone', 'monitor', 'screen', 'display', 'computer', 'laptop', 'tablet'];
-    const hasUnwantedItems = unwantedItems.some(item => 
-      prompt.toLowerCase().includes(item.toLowerCase())
-    );
-    
+    // 프롬프트 개선: 원본 제품 특성 유지 강화
     let enhancedPrompt = prompt;
     
-    if (hasUnwantedItems) {
-      console.warn('IFL: 잘못된 제품 키워드 감지, 일반적인 제품으로 대체');
-      enhancedPrompt = prompt.replace(/\b(phone|iphone|smartphone|monitor|screen|display|computer|laptop|tablet)\b/gi, 'product');
+    // 청소기 관련 키워드가 있는지 확인하고 강화
+    if (prompt.toLowerCase().includes('vacuum') || prompt.toLowerCase().includes('cleaner')) {
+      enhancedPrompt = `${prompt}, vacuum cleaner design, cleaning appliance, suction device, household cleaning equipment`;
     }
     
+    // 원본 이미지의 특성을 유지하도록 프롬프트 개선
+    if (!enhancedPrompt.toLowerCase().includes('maintain') && !enhancedPrompt.toLowerCase().includes('similar')) {
+      enhancedPrompt = `Maintain similar product type and design elements, ${enhancedPrompt}`;
+    }
+    
+    // 제품이 완전히 보이도록 하는 키워드 추가
     if (!enhancedPrompt.toLowerCase().includes('full') && !enhancedPrompt.toLowerCase().includes('complete')) {
       enhancedPrompt = `Full product view, completely visible, ${enhancedPrompt}, not cropped, proper framing, adequate spacing around product`;
     }
 
-    // FormData 생성 (img2img용)
+    console.log('🔧 개선된 프롬프트:', enhancedPrompt);
+
+    // FormData 생성 (img2img용) - CORS 우회를 위한 설정 추가
     const formData = new FormData();
     formData.append('prompt', enhancedPrompt);
     formData.append('mode', 'image-to-image');
     formData.append('model', 'sd3.5-large');
     formData.append('image', blob, 'input.png');
-    formData.append('strength', strength.toString());
+    formData.append('strength', Math.min(strength, 0.6).toString()); // 원본 특성 더 유지하도록 강도 조정
     formData.append('output_format', 'png');
 
+    // CORS 문제 해결을 위한 요청 설정
     const apiResponse = await fetch(STABILITY_API_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${STABILITY_API_KEY}`,
-        'Accept': 'image/*'
+        'Accept': 'image/*',
+        // CORS 관련 헤더 제거 - 브라우저가 자동으로 처리하도록
       },
-      body: formData
+      body: formData,
+      // CORS 문제 해결을 위한 모드 설정
+      mode: 'cors',
+      credentials: 'omit'
     });
 
     if (!apiResponse.ok) {
       const errorText = await apiResponse.text();
+      console.error('Stability AI img2img API 오류:', errorText);
+      
+      // CORS 오류인 경우 대체 방법 사용
+      if (errorText.includes('CORS') || apiResponse.status === 0) {
+        console.warn('CORS 오류 감지, text-to-image로 대체 생성');
+        // text-to-image로 fallback
+        return await generateProductImageWithStability(enhancedPrompt);
+      }
+      
       throw new Error(`Stability AI img2img API 요청 실패: ${apiResponse.status} - ${errorText}`);
     }
 
@@ -1621,12 +1299,24 @@ export const generateProductImageWithStability_I2I = async (prompt, imageUrl, st
     );
     
     const resultImage = `data:image/png;base64,${base64Image}`;
-    console.log('IFL: img2img 생성 완료');
+    console.log('img2img 생성 완료');
     
     return resultImage;
     
   } catch (error) {
     console.error('img2img 이미지 생성 실패:', error);
+    
+    // CORS 오류나 네트워크 오류인 경우 text-to-image로 대체
+    if (error.message.includes('CORS') || error.message.includes('fetch') || error.name === 'TypeError') {
+      console.warn('네트워크/CORS 오류로 인해 text-to-image로 대체 생성');
+      try {
+        return await generateProductImageWithStability(prompt);
+      } catch (fallbackError) {
+        console.error('Fallback도 실패:', fallbackError);
+        throw new Error('이미지 생성에 실패했습니다. 잠시 후 다시 시도해주세요.');
+      }
+    }
+    
     throw error;
   }
 };
@@ -1680,3 +1370,178 @@ export const resizeImage = (imageUrl, maxWidth = 1024, maxHeight = 1024) => {
     img.src = imageUrl;
   });
 };
+
+// =============================================================================
+// 프록시 서버 CORS 우회 함수들 (개발용)
+// =============================================================================
+
+/**
+ * 프록시를 사용한 Firebase Storage 이미지 로드 (CORS 우회 - 개발용)
+ * @param {string} firebaseUrl - Firebase Storage HTTPS URL
+ * @returns {Promise<string>} base64 data URL
+ */
+export async function loadImageViaProxy(firebaseUrl) {
+  try {
+    console.log('프록시를 통한 Firebase Storage 이미지 로드 시작');
+    console.log('원본 Firebase URL:', firebaseUrl.substring(0, 150) + '...');
+    
+    // Firebase Storage URL을 프록시 URL로 변환
+    // 새로운 .firebasestorage.app 도메인과 기존 .googleapis.com 도메인 모두 처리
+    let proxyUrl;
+    if (firebaseUrl.includes('firebasestorage.googleapis.com')) {
+      proxyUrl = firebaseUrl.replace('https://firebasestorage.googleapis.com', PROXY_FIREBASE_STORAGE);
+    } else if (firebaseUrl.includes('.firebasestorage.app')) {
+      // .firebasestorage.app 도메인의 경우 새로운 프록시 사용
+      proxyUrl = firebaseUrl.replace(/^https?:\/\/[^/]+\.firebasestorage\.app/, PROXY_FIREBASE_STORAGE_NEW);
+    } else {
+      throw new Error('지원하지 않는 Firebase Storage URL 형식입니다');
+    }
+    
+    console.log('변환된 프록시 URL:', proxyUrl.substring(0, 100) + '...');
+    
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
+      cache: 'no-store', // 캐시 무시
+      headers: {
+        'Accept': 'image/*'
+      }
+    });
+    
+    console.log('프록시 응답 상태:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('프록시 응답 오류:', errorText);
+      throw new Error(`프록시 요청 실패: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    
+    const blob = await response.blob();
+    console.log('프록시 응답 성공:', blob.size, 'bytes', 'Type:', blob.type);
+    
+    // Blob을 data URL로 변환
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('프록시 data URL 변환 완료');
+        resolve(reader.result);
+      };
+      reader.onerror = () => {
+        console.error('프록시 FileReader 오류:', reader.error);
+        reject(reader.error);
+      };
+      reader.readAsDataURL(blob);
+    });
+    
+  } catch (error) {
+    console.error('프록시 이미지 로드 실패:', error);
+    console.error('오류 타입:', error.name);
+    console.error('오류 메시지:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 프록시를 사용한 Stability AI 호출 (CORS 우회 - 개발용)
+ * @param {FormData} formData - Stability AI 요청 데이터
+ * @returns {Promise<ArrayBuffer>} 생성된 이미지 데이터
+ */
+export async function callStabilityViaProxy(formData) {
+  try {
+    console.log('프록시를 통한 Stability AI 호출');
+    
+    const response = await fetch(PROXY_STABILITY_API, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${STABILITY_API_KEY}`,
+        'Accept': 'image/*'
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`프록시 Stability API 오류: ${response.status} - ${errorText}`);
+    }
+
+    console.log('프록시 Stability AI 성공');
+    return await response.arrayBuffer();
+    
+  } catch (error) {
+    console.error('프록시 Stability AI 실패:', error);
+    throw error;
+  }
+}
+
+/**
+ * 개발 환경에서 프록시 사용 여부를 확인하고 적절한 방법으로 이미지 로드
+ * @param {string} imageUrl - 이미지 URL
+ * @returns {Promise<string>} base64 data URL
+ */
+export async function loadImageWithCORSWorkaround(imageUrl) {
+  try {
+    console.log('이미지 로드 시작:', imageUrl.substring(0, 100) + '...');
+    
+    // data URL인 경우 그대로 반환
+    if (imageUrl.startsWith("data:image/")) {
+      console.log('이미 data URL, 그대로 반환');
+      return imageUrl;
+    }
+    
+    // Firebase Storage URL 패턴 체크 (새로운 .firebasestorage.app 도메인 포함)
+    const isFirebaseStorage = /^https?:\/\/(firebasestorage\.googleapis\.com|.*\.firebasestorage\.app)/.test(imageUrl);
+    
+    // 개발 환경이고 Firebase Storage URL인 경우 프록시 시도
+    if (USE_PROXY && isFirebaseStorage) {
+      console.log('개발 환경 - Firebase Storage 프록시 사용 시도');
+      console.log('원본 URL:', imageUrl.substring(0, 150) + '...');
+      try {
+        const result = await loadImageViaProxy(imageUrl);
+        console.log('프록시 성공');
+        return result;
+      } catch (proxyError) {
+        console.warn('프록시 실패, 일반 fetch로 fallback:', proxyError.message);
+        console.warn('프록시 오류 상세:', proxyError);
+      }
+    }
+    
+    // 일반 fetch 방식 (CORS 위험 있음)
+    console.log('일반 fetch 방식 사용');
+    console.log('요청 URL:', imageUrl.substring(0, 100) + '...');
+    
+    const response = await fetch(imageUrl, {
+      cache: 'no-store',
+      mode: 'cors',
+      headers: {
+        'Accept': 'image/*'
+      }
+    });
+    
+    console.log('응답 상태:', response.status, response.statusText);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const blob = await response.blob();
+    console.log('Blob 크기:', blob.size, 'bytes');
+    
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('data URL 변환 완료');
+        resolve(reader.result);
+      };
+      reader.onerror = () => {
+        console.error('FileReader 오류:', reader.error);
+        reject(reader.error);
+      };
+      reader.readAsDataURL(blob);
+    });
+    
+  } catch (error) {
+    console.error('이미지 로드 완전 실패:', error);
+    console.error('오류 타입:', error.name);
+    console.error('오류 메시지:', error.message);
+    throw error;
+  }
+}

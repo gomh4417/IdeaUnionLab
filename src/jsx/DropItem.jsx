@@ -119,6 +119,16 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
     brandColor = fn ? fn(theme) : theme.colors.brand[1];
   }
 
+  // DropItem에서 받는 imageUrl 디버깅
+  if (imageUrl) {
+    console.log('📸 DropItem imageUrl 확인:');
+    console.log('  - Title:', title);
+    console.log('  - Type:', type);
+    console.log('  - ImageURL:', imageUrl);
+    console.log('  - URL Type:', imageUrl.includes('.firebasestorage.app') ? 'firebasestorage.app' : 
+                                  imageUrl.includes('firebasestorage.googleapis.com') ? 'googleapis.com' : 'other');
+  }
+
   const isResult = type === 'result';
   const isOriginal = type === 'original';
   const isLabPage = pageType === 'lab';
