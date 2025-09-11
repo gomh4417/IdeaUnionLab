@@ -2,6 +2,9 @@
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase';
 
 // 프로젝트 아이템 컨테이너 스타일
 const Container = styled(motion.div)`
@@ -168,6 +171,54 @@ const CounterNumber = styled.span`
 
 export default function ProjectItem({ project, focused, animating, onClick }) {
     const navigate = useNavigate();
+    const [additiveCounts, setAdditiveCounts] = useState({
+        creativity: 0,
+        usability: 0,
+        aesthetics: 0
+    });
+
+    // Firebase에서 해당 프로젝트의 생성물 아이디어들을 실시간으로 가져와서 additiveType별로 카운트
+    useEffect(() => {
+        if (!project.id) return;
+
+        let unsubscribe = null;
+        
+        try {
+            // 해당 프로젝트의 생성물 아이디어들을 가져오는 쿼리
+            const ideasQuery = query(
+                collection(db, 'projects', project.id, 'ideas'),
+                where('id', '>=', 'result_idea_'),
+                where('id', '<', 'result_idea_\uf8ff')
+            );
+
+            unsubscribe = onSnapshot(ideasQuery, (snapshot) => {
+                const counts = {
+                    creativity: 0,
+                    usability: 0,
+                    aesthetics: 0
+                };
+
+                snapshot.docs.forEach((doc) => {
+                    const data = doc.data();
+                    const additiveType = data.additiveType;
+                    
+                    if (additiveType && additiveType in counts) {
+                        counts[additiveType]++;
+                    }
+                });
+
+                setAdditiveCounts(counts);
+            });
+        } catch (error) {
+            console.error('ProjectItem: additiveType 카운트 로딩 실패:', error);
+        }
+
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+        };
+    }, [project.id]);
     
     // 프로젝트 클릭 시 처리
     const handleClick = (e) => {
@@ -261,7 +312,7 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                         $focused={focused} 
                         $colorIndex={3}
                     />
-                    <CounterNumber $focused={focused}>16</CounterNumber>
+                    <CounterNumber $focused={focused}>{additiveCounts.creativity}</CounterNumber>
                 </CounterItem>
                 
                 <CounterItem $focused={focused}>
@@ -273,7 +324,7 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                         $focused={focused} 
                         $colorIndex={2}
                     />
-                    <CounterNumber $focused={focused}>4</CounterNumber>
+                    <CounterNumber $focused={focused}>{additiveCounts.usability}</CounterNumber>
                 </CounterItem>
                 
                 <CounterItem $focused={focused}>
@@ -285,7 +336,7 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                         $focused={focused} 
                         $colorIndex={1}
                     />
-                    <CounterNumber $focused={focused}>8</CounterNumber>
+                    <CounterNumber $focused={focused}>{additiveCounts.aesthetics}</CounterNumber>
                 </CounterItem>
             </IdeaCounterContainer>
         </Container>
