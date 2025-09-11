@@ -100,11 +100,11 @@ export default function Item({
   onDelete,
   tags = [],
   itemData,
-  onDragStateChange,   // ✅ props로 받기
+  onDragStateChange,   
 }) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'ITEM',
-    // 함수로 주면 "드래그 시작 시" 호출됩니다.
+    
     item: () => {
       onDragStateChange?.(true);
       return { idx, imageUrl, title, itemData };

@@ -7,8 +7,6 @@ import styled, { ThemeProvider } from 'styled-components';
 import { theme } from '../styles/theme';
 
 
-// Styled Sidebar Container
-// AddItem styles
 const AddItemWrap = styled.div`
   display: flex;
   align-items: center;
@@ -49,7 +47,7 @@ const SidebarContainer = styled.div`
   box-shadow: ${props => props.theme.shadow};
 `;
 
-// 스크롤 가능한 콘텐츠 영역
+
 const ScrollableContent = styled.div`
   flex: 1;
   overflow-y: auto;
@@ -67,7 +65,7 @@ const ScrollableContent = styled.div`
   -ms-overflow-style: none;
 `;
 
-// BtnWrap styled-component
+
 const BtnWrap = styled.div`
   display: flex;
   flex-direction: row;
@@ -114,7 +112,7 @@ export default function Sidebar({ projects, activatedIdx, setActivatedIdx, onDel
   const [active, setActive] = useState('raw');
   const navigate = useNavigate();
   
-  // 활성 탭에 따라 아이디어 필터링
+  
   const filteredProjects = projects.filter(project => {
     if (active === 'raw') {
       // 원재료: ID가 "idea_"로 시작하는 것들 (result_idea_ 제외)

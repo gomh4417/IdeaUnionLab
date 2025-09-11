@@ -87,7 +87,7 @@ const DateText = styled(motion.div)`
     margin-top: 4px;
 `;
 
-// 아이디어 카운터 컨테이너 스타일
+
 const IdeaCounterContainer = styled(motion.div)`
     display: flex;
     justify-content: center;
@@ -104,7 +104,7 @@ const IdeaCounterContainer = styled(motion.div)`
     transition: all 0.3s ease;
 `;
 
-// 개별 카운터 스타일
+
 const CounterItem = styled.div`
     position: relative;
     width: ${({ $focused }) => $focused ? '72px' : '48px'};  /* Focused: 72px, Default: 48px */
@@ -117,7 +117,7 @@ const CounterItem = styled.div`
     transition: all 0.3s ease;
 `;
 
-// 카운터 프레임 (테두리) 스타일
+
 const CounterFrame = styled.div`
     position: absolute;
     top: 50%;
@@ -133,11 +133,11 @@ const CounterFrame = styled.div`
     background-repeat: no-repeat;
     background-position: center;
     z-index: 2;
- 
+
     
 `;
 
-// 카운터 볼륨 (내부 채움) 스타일
+
 const CounterVolume = styled.div`
     position: absolute;
     top: 50%;
@@ -154,10 +154,10 @@ const CounterVolume = styled.div`
     background-position: center;
     z-index: 1;
     
-   
+
 `;
 
-// 카운터 숫자 스타일
+
 const CounterNumber = styled.span`
     position: relative;
     z-index: 10;
@@ -271,23 +271,23 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
         <Container
             $focused={focused}
             onClick={handleClick}
-            // 포커스 상태에 따른 크기 애니메이션 - 이미지 사이즈 기준
+            
             animate={{
-                width: focused ? 320 : 240,   // Focused: 320px, Default: 240px
-                height: focused ? 220 : 164,  // Focused: 220px, Default: 164px  
-                zIndex: focused ? 2 : 1,      // 포커스 시 앞으로 가져오기
+                width: focused ? 320 : 240,   
+                height: focused ? 220 : 164,   
+                zIndex: focused ? 2 : 1,     
             }}
-            // 애니메이션 설정 - 부드러운 스프링 효과
+            // 애니메이션 설정
             transition={{ 
                 type: 'spring', 
-                stiffness: 100,  // 애니메이션 강도 - 300에서 200으로 줄여 더 부드럽게
-                damping: 10,     // 애니메이션 감쇠 - 30에서 25로 줄여 더 부드럽게
-                mass: 0.5    // 질량 추가 - 더 자연스러운 움직임
+                stiffness: 100,  
+                damping: 10,     
+                mass: 0.5    
             }}
             style={{
                 margin: 0,
                 flexShrink: 0,
-                // 애니메이션 중일 때는 CSS transition 비활성화
+                
                 transition: animating ? 'none' : undefined,
             }}
         >
@@ -301,7 +301,7 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                 {formatDate(project.createdAt || project.date)}
             </DateText>
             
-            {/* 아이디어 카운터 (포커스 상태에서만 표시) */}
+            {/* 생성물 카운팅 (포커스 상태에서만) */}
             <IdeaCounterContainer $focused={focused}>
                 <CounterItem $focused={focused}>
                     <CounterVolume 

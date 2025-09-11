@@ -171,15 +171,6 @@ const Content = styled.div`
   transition: filter 0.3s ease-in-out;
 `;
 
-
-
-// DropItem: { title, imageUrl, content, type, additiveType, pageType, loading, loadingColor, loadingExit } props로 받음
-// type: 'original' (원재료) | 'result' (생성물)
-// pageType: 'lab' | 'result' - 페이지에 따른 레이아웃 변경
-// generation: 1, 2, 3, ... (default 1)
-// loading: 로딩 상태 여부
-// loadingColor: 로딩 오버레이 배경색 (첨가제 색상)
-// loadingExit: 로딩 종료 애니메이션 여부 (ResultPage용)
 export default function DropItem({ 
   title, 
   imageUrl, 
@@ -194,7 +185,7 @@ export default function DropItem({
 }) {
   const theme = useTheme();
   
-  // 로테이팅 텍스트를 위한 상태
+
   const labTexts = [
     "사용자의 원재료를 분석하고 있어요",
     "원재료에 첨가제를 추가하고 있어요", 
@@ -218,10 +209,8 @@ export default function DropItem({
     if (!loading || pageType !== 'result') return;
     
     const blurInterval = setInterval(() => {
-      // 5% 약하게 (8px → 7.6px)
       setBlurIntensity(7.6);
-      
-      // 0.5초 후 다시 강하게
+
       setTimeout(() => {
         setBlurIntensity(8);
       }, 500);
@@ -247,9 +236,8 @@ export default function DropItem({
     brandColor = fn ? fn(theme) : theme.colors.brand[1];
   }
 
-  // DropItem에서 받는 imageUrl 디버깅
   if (imageUrl) {
-    console.log('📸 DropItem imageUrl 확인:');
+    console.log(' DropItem imageUrl 확인:');
     console.log('  - Title:', title);
     console.log('  - Type:', type);
     console.log('  - ImageURL:', imageUrl);
@@ -291,7 +279,7 @@ export default function DropItem({
               animate={
                 loadingExit 
                   ? { scale: 0, opacity: 0 }  // Exit 애니메이션
-                  : { scale: 1, opacity: 1 }  // 정상 상태
+                  : { scale: 1, opacity: 1 }  
               }
               exit={{ scale: 0, opacity: 0 }}
               transition={
