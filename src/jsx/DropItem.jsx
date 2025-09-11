@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from 'styled-components';
 import styled from 'styled-components';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const ICONS = {
   creativity: '/creativity.svg',
@@ -73,6 +74,63 @@ const ImgContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+`;
+
+const LoadingOverlay = styled(motion.div)`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  z-index: 10;
+`;
+
+const LoadingSpinner = styled.div`
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top: 3px solid #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+`;
+
+const LoadingText = styled.div`
+  color: #fff;
+  text-align: center;
+  
+  .main-text {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 8px;
+  }
+  
+  .sub-text-container {
+    position: relative;
+    height: 24px;
+    width: 400px;
+    overflow: hidden;
+  }
+  
+  .sub-text {
+    font-size: 16px;
+    font-weight: 300;
+    position: absolute;
+    width: 100%;
+    top: 0;
+    left: 0;
+    white-space: nowrap;
+  }
 `;
 
 const Image = styled.img`
@@ -87,6 +145,10 @@ const Title = styled.div`
   color: ${({ theme }) => theme.colors.gray[900]};
   margin-bottom: 6px;
   align-self: flex-start;
+  filter: ${({ $loading, $pageType, $blurIntensity }) => 
+    $loading && $pageType === 'result' ? `blur(${$blurIntensity}px)` : 'none'
+  };
+  transition: filter 0.3s ease-in-out;
 `;
 
 const Content = styled.div`
@@ -103,16 +165,82 @@ const Content = styled.div`
   &::-webkit-scrollbar {
     display: none; /* Chrome, Safari, Opera */
   }
+  filter: ${({ $loading, $pageType, $blurIntensity }) => 
+    $loading && $pageType === 'result' ? `blur(${$blurIntensity}px)` : 'none'
+  };
+  transition: filter 0.3s ease-in-out;
 `;
 
 
 
-// DropItem: { title, imageUrl, content, type, additiveType, pageType } props로 받음
+// DropItem: { title, imageUrl, content, type, additiveType, pageType, loading, loadingColor, loadingExit } props로 받음
 // type: 'original' (원재료) | 'result' (생성물)
 // pageType: 'lab' | 'result' - 페이지에 따른 레이아웃 변경
 // generation: 1, 2, 3, ... (default 1)
-export default function DropItem({ title, imageUrl, content, type, additiveType, generation = 1, pageType = 'lab' }) {
+// loading: 로딩 상태 여부
+// loadingColor: 로딩 오버레이 배경색 (첨가제 색상)
+// loadingExit: 로딩 종료 애니메이션 여부 (ResultPage용)
+export default function DropItem({ 
+  title, 
+  imageUrl, 
+  content, 
+  type, 
+  additiveType, 
+  generation = 1, 
+  pageType = 'lab',
+  loading = false,
+  loadingColor = null,
+  loadingExit = false
+}) {
   const theme = useTheme();
+  
+  // 로테이팅 텍스트를 위한 상태
+  const labTexts = [
+    "사용자의 원재료를 분석하고 있어요",
+    "원재료에 첨가제를 추가하고 있어요", 
+    "실험 결과 리포트를 작성하고 있어요"
+  ];
+  
+  const resultTexts = [
+    "결과물을 시각화하고 있어요",
+    "이미지 안정화 작업 중이에요",
+    "실험실을 정리하고 있어요"
+  ];
+  
+  const subTexts = pageType === 'result' ? resultTexts : labTexts;
+  const mainText = pageType === 'result' ? "최종 완성된 이미지를 생성하고 있어요!" : "디자인 실험을 시작했어요!";
+  
+  // 6.5초마다 blur 강도 변화
+  const [blurIntensity, setBlurIntensity] = useState(8); // 기본 blur 강도
+  const [currentTextIndex, setCurrentTextIndex] = useState(0);
+  
+  useEffect(() => {
+    if (!loading || pageType !== 'result') return;
+    
+    const blurInterval = setInterval(() => {
+      // 5% 약하게 (8px → 7.6px)
+      setBlurIntensity(7.6);
+      
+      // 0.5초 후 다시 강하게
+      setTimeout(() => {
+        setBlurIntensity(8);
+      }, 500);
+    }, 6500);
+    
+    return () => clearInterval(blurInterval);
+  }, [loading, pageType]);
+  
+  
+  useEffect(() => {
+    if (!loading) return;
+    
+    const interval = setInterval(() => {
+      setCurrentTextIndex((prev) => (prev + 1) % subTexts.length);
+    }, 6000);
+    
+    return () => clearInterval(interval);
+  }, [loading, subTexts.length]);
+  
   let brandColor = theme.colors.brand[1];
   if (additiveType) {
     const fn = BRAND_COLORS[additiveType];
@@ -130,7 +258,6 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
   }
 
   const isResult = type === 'result';
-  const isOriginal = type === 'original';
   const isLabPage = pageType === 'lab';
   const isResultPage = pageType === 'result';
   
@@ -152,6 +279,60 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
       {imageUrl && (
         <ImgContainer>
           <Image src={imageUrl} alt={title} />
+          
+          {/* 로딩 오버레이 */}
+          {loading && (
+            <LoadingOverlay
+              initial={
+                pageType === 'result' 
+                  ? { scale: 1, opacity: 1 }  // ResultPage: 즉시 나타남
+                  : { scale: 0 }              // LabPage: spring 효과
+              }
+              animate={
+                loadingExit 
+                  ? { scale: 0, opacity: 0 }  // Exit 애니메이션
+                  : { scale: 1, opacity: 1 }  // 정상 상태
+              }
+              exit={{ scale: 0, opacity: 0 }}
+              transition={
+                loadingExit 
+                  ? { duration: 0.6, ease: "easeInOut" }  // Exit 애니메이션
+                  : pageType === 'result'
+                    ? { duration: 0 }                     // ResultPage: 즉시
+                    : {                                   // LabPage: spring
+                        type: 'spring', 
+                        stiffness: 50,
+                        damping: 5,
+                        mass: 0.5
+                      }
+              }
+              style={{ 
+                backgroundColor: loadingColor || '#5755FE'
+              }}
+            >
+              <LoadingSpinner />
+              <LoadingText>
+                <div className="main-text">{mainText}</div>
+                <div className="sub-text-container">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={currentTextIndex}
+                      className="sub-text"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ 
+                        duration: 0.5,
+                        ease: "easeInOut"
+                      }}
+                    >
+                      {subTexts[currentTextIndex]}
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+              </LoadingText>
+            </LoadingOverlay>
+          )}
         </ImgContainer>
       )}
 
@@ -165,8 +346,8 @@ export default function DropItem({ title, imageUrl, content, type, additiveType,
         </ChipRow>
       )}
       
-      <Title>{title}</Title>
-      <Content>{content}</Content>
+      <Title $loading={loading} $pageType={pageType} $blurIntensity={blurIntensity}>{title}</Title>
+      <Content $loading={loading} $pageType={pageType} $blurIntensity={blurIntensity}>{content}</Content>
     </Container>
   );
 }

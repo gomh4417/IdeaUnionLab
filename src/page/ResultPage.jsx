@@ -7,19 +7,16 @@ import { generateImprovedProductWithImage } from '../utils/Aiapi';
 import { uploadDataUrl } from '../utils/firebaseStorage';
 import Header from '../jsx/Header';
 import styled from 'styled-components';
-import { theme } from '../styles/theme';
 import DropItem from '../jsx/DropItem';
 import ResultReport from '../jsx/ResultReport';
 import ActionBtn from '../jsx/ActionBtn';
 
-const GlobalStyle = `
-  @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-`;
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style');
-  style.textContent = GlobalStyle;
-  document.head.appendChild(style);
-}
+// 첨가제별 브랜드 컬러 매핑 (LabPage와 동일)
+const ADDITIVE_COLORS = {
+  creativity: '#5755FE',  // brand[3]
+  aesthetics: '#00CD80',  // brand[1] 
+  usability: '#FD6B03'    // brand[2]
+};
 
 const LayoutWrap = styled.div`
   display: flex;
@@ -42,6 +39,7 @@ function ResultPage() {
   const [saving, setSaving] = useState(false);
   const [improvedIdea, setImprovedIdea] = useState(null);
   const [loadingImprovedInfo, setLoadingImprovedInfo] = useState(false);
+  const [loadingExit, setLoadingExit] = useState(false);
 
   // LabPage에서 전달된 값
   const experimentId = location.state?.experimentId;
@@ -125,6 +123,17 @@ function ResultPage() {
         console.log('✅ ResultPage: improvedIdea 상태 업데이트 완료');
         console.log('🖼️ 최종 표시될 이미지:', improved.imageUrl ? '새 이미지' : '원본 이미지');
         
+        // 로딩 exit 애니메이션 시작
+        setLoadingExit(true);
+        
+        // 0.6초 후 로딩 완전 종료
+        setTimeout(() => {
+          if (mounted) {
+            setLoadingImprovedInfo(false);
+            setLoadingExit(false);
+          }
+        }, 600);
+        
       } catch (e) {
         if (!mounted) return;
         console.error('❌ ResultPage: 개선 생성 실패:', e);
@@ -137,8 +146,18 @@ function ResultPage() {
           dalleGenerated: false,
           dalleError: e.message
         });
-      } finally {
-        if (mounted) setLoadingImprovedInfo(false);
+        
+        // 로딩 exit 애니메이션 시작
+        setLoadingExit(true);
+        
+        // 0.6초 후 로딩 완전 종료
+        setTimeout(() => {
+          if (mounted) {
+            setLoadingImprovedInfo(false);
+            setLoadingExit(false);
+          }
+        }, 600);
+        
       }
     };
 
@@ -286,34 +305,18 @@ function ResultPage() {
 
       <ContentWrap>
         {loadingImprovedInfo ? (
-          <div style={{
-            width: '563px',
-            height: '600px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: '4px',
-            color: theme.colors.gray[400],
-            background: '#fff',
-            borderRadius: theme.radius.medium,
-            boxShadow: '0px 4px 8px rgba(0,0,0,0.05)',
-          }}>
-            <div style={{
-              width: 40, height: 40,
-              border: `3px solid ${theme.colors.gray[200]}`,
-              borderTop: `3px solid ${theme.colors.primary}`,
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              marginBottom: 24
-            }} />
-            <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.primary, marginBottom: 4 }}>
-              AI가 개선된 아이디어를 생성하고 있습니다
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 300, color: theme.colors.gray[400], textAlign: 'center' }}>
-              잠시만 기다려주세요. 텍스트와 이미지를 생성중입니다...
-            </div>
-          </div>
+          <DropItem
+            title={originalIdea?.title || "아이디어"}
+            imageUrl={originalIdea?.imageUrl || null}
+            content={originalIdea?.description || "아이디어를 개선하고 있습니다."}
+            type="original"
+            additiveType={additiveType}
+            generation={calculateGeneration(originalIdea)}
+            pageType="result"
+            loading={true}
+            loadingColor={ADDITIVE_COLORS[additiveType] || '#5755FE'}
+            loadingExit={loadingExit}
+          />
         ) : improvedIdea ? (
           <DropItem
             title={improvedIdea.title}

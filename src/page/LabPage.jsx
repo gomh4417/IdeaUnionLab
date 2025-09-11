@@ -15,6 +15,13 @@ import ActionBtn from '../jsx/ActionBtn';
 import DropItem from '../jsx/DropItem';
 import AdditiveBar from '../jsx/AdditiveBar';
 
+// 첨가제별 브랜드 컬러 매핑
+const ADDITIVE_COLORS = {
+  creativity: '#5755FE',  // brand[3]
+  aesthetics: '#00CD80',  // brand[1] 
+  usability: '#FD6B03'    // brand[2]
+};
+
 
 const LayoutWrap = styled.div`
   display: flex;
@@ -386,6 +393,8 @@ function LabPage() {
               generation={calculateCurrentGeneration(droppedItemData)}
               pageType="lab"
               onClear={handleClearSelection}
+              loading={loading}
+              loadingColor={selectedAdditive ? ADDITIVE_COLORS[selectedAdditive] : null}
             />
           ) : (
             // 최초 상태의 안내 화면 (absolute positioned)

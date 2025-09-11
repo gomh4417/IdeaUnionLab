@@ -51,10 +51,10 @@ const Title = styled(motion.div)`
     color: ${({ theme }) => theme.colors.gray[900]};
     
     /* 포커스 상태에 따른 폰트 크기 변화 - 조정 가능 */
-    font-size: ${({ $focused }) => $focused ? '24px' : '16px'}; /* 28px에서 24px로 줄임 */
+    font-size: ${({ $focused }) => $focused ? '24px' : '16px'}; 
     
     /* 폰트 크기 transition 추가 */
-    transition: font-size 0.3s ease-in;
+    transition: font-size 0.15s ease-in;
     
     /* 여백 설정 */
     margin-bottom: 2px;
@@ -81,7 +81,7 @@ const DateText = styled(motion.div)`
     font-size: ${({ $focused }) => $focused ? '16px' : '12px'}; 
     
     /* 폰트 크기와 패딩 transition 추가 */
-    transition: all 0.3s ease-in;
+    transition: font-size 0.15s ease-in;
     
     /* 상단 여백 */
     margin-top: 4px;
@@ -101,7 +101,7 @@ const IdeaCounterContainer = styled(motion.div)`
     transform: ${({ $focused }) => $focused ? 'translateY(0)' : 'translateY(10px)'};
     
     /* 마진과 opacity, transform transition 추가 */
-    transition: all 0.3s ease-in;
+    transition: all 0.3s ease;
 `;
 
 // 개별 카운터 스타일
@@ -114,7 +114,7 @@ const CounterItem = styled.div`
     justify-content: center;
     
     /* 크기 transition 추가 */
-    transition: all 0.3s ease-in;
+    transition: all 0.3s ease;
 `;
 
 // 카운터 프레임 (테두리) 스타일
