@@ -5,12 +5,12 @@ import { motion } from 'framer-motion';
 
 // 프로젝트 아이템 컨테이너 스타일
 const Container = styled(motion.div)`
-    /* 기본 크기 설정 - 수정 가능 */
-    width: 228px;
-    height: 160px;
+    /* 기본 크기 설정 - 이미지 기준으로 수정 */
+    width: 240px;  /* Default: 240px */
+    height: 164px; /* Default: 164px */
     
     /* 컨테이너 모양 설정 */
-    border-radius: ${({ $focused, theme }) => $focused ? theme.radius.large : theme.radius.medium};
+    border-radius: ${({ $focused }) => $focused ? '10px' : '4px'};
     border: 1px solid ${({ theme }) => theme.colors.gray[300]};
     background: #fff;
     
@@ -19,11 +19,11 @@ const Container = styled(motion.div)`
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    text-align: center; /* 텍스트 중앙 정렬 추가 */
+    text-align: center;
     
-    /* 내부 여백 설정 - 텍스트가 가장자리에 붙지 않도록 */
-    padding: 20px 16px; /* 상하 20px, 좌우 16px - 필요시 조정 가능 */
-    box-sizing: border-box; /* padding 포함해서 크기 계산 */
+    /* 내부 여백 설정 */
+    padding: 20px 16px 16px 16px;
+    box-sizing: border-box;
     
     /* 상호작용 효과 */
     cursor: pointer;
@@ -32,7 +32,7 @@ const Container = styled(motion.div)`
     /* 호버 효과 추가 */
     &:hover {
         border-color: ${({ theme }) => theme.colors.gray[400]};
-        transition: border-color 0.2s ease;
+        
     }
 `;
 
@@ -49,10 +49,12 @@ const Title = styled(motion.div)`
     
     /* 포커스 상태에 따른 폰트 크기 변화 - 조정 가능 */
     font-size: ${({ $focused }) => $focused ? '24px' : '16px'}; /* 28px에서 24px로 줄임 */
-    transition: font-size 0.3s ease;
+    
+    /* 폰트 크기 transition 추가 */
+    transition: font-size 0.3s ease-in;
     
     /* 여백 설정 */
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     
     /* 텍스트 길이 제한 (선택사항) */
     max-width: 100%;
@@ -64,6 +66,8 @@ const Title = styled(motion.div)`
 const DateText = styled(motion.div)`
     /* 텍스트 정렬 */
     text-align: center;
+    border-bottom: 1px solid #eee;
+    padding-bottom: ${({ $focused }) => $focused ? '12px' : '10px'};
     
     /* 폰트 설정 */
     font-weight: 400;
@@ -71,11 +75,95 @@ const DateText = styled(motion.div)`
     color: ${({ theme }) => theme.colors.gray[500]};
     
     /* 포커스 상태에 따른 폰트 크기 변화 - 조정 가능 */
-    font-size: ${({ $focused }) => $focused ? '16px' : '12px'}; /* 18px에서 16px로 줄임 */
-    transition: font-size 0.3s ease;
+    font-size: ${({ $focused }) => $focused ? '16px' : '12px'}; 
+    
+    /* 폰트 크기와 패딩 transition 추가 */
+    transition: all 0.3s ease-in;
     
     /* 상단 여백 */
     margin-top: 4px;
+`;
+
+// 아이디어 카운터 컨테이너 스타일
+const IdeaCounterContainer = styled(motion.div)`
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0px;
+    width: 100%;
+    margin-top: ${({ $focused }) => $focused ? '12px' : '6px'};
+    
+    /* 포커스 상태에서만 표시 */
+    opacity: ${({ $focused }) => $focused ? 1 : 0.9};
+    transform: ${({ $focused }) => $focused ? 'translateY(0)' : 'translateY(10px)'};
+    
+    /* 마진과 opacity, transform transition 추가 */
+    transition: all 0.3s ease-in;
+`;
+
+// 개별 카운터 스타일
+const CounterItem = styled.div`
+    position: relative;
+    width: ${({ $focused }) => $focused ? '72px' : '48px'};  /* Focused: 72px, Default: 48px */
+    height: ${({ $focused }) => $focused ? '72px' : '48px'}; /* Focused: 72px, Default: 48px */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    /* 크기 transition 추가 */
+    transition: all 0.3s ease-in;
+`;
+
+// 카운터 프레임 (테두리) 스타일
+const CounterFrame = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: ${({ $focused }) => $focused ? '72px' : '48px'};   /* Frame 크기 */
+    height: ${({ $focused }) => $focused ? '72px' : '48px'};  /* Frame 크기 */
+    background-image: url(${({ $focused, $colorIndex }) => {
+        if (!$focused) return '/countFrame-default.svg';
+        return `/countFrame-brand${$colorIndex}.svg`;
+    }});
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 2;
+ 
+    
+`;
+
+// 카운터 볼륨 (내부 채움) 스타일
+const CounterVolume = styled.div`
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: ${({ $focused }) => $focused ? '72px' : '48px'};   /* Volume 크기 */
+    height: ${({ $focused }) => $focused ? '72px' : '48px'};  /* Volume 크기 */
+    background-image: url(${({ $focused, $colorIndex }) => {
+        if (!$focused) return '/countVolume-default.svg';
+        return `/countVolume-brand${$colorIndex}.svg`;
+    }});
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    z-index: 1;
+    
+   
+`;
+
+// 카운터 숫자 스타일
+const CounterNumber = styled.span`
+    position: relative;
+    z-index: 10;
+    color: #fff;
+    font-size: ${({ $focused }) => $focused ? '18px' : '10px'};
+    font-weight: 500;
+    text-align: center;
+    margin-top: ${({ $focused }) => $focused ? '14px' : '8px'};
+
 `;
 
 export default function ProjectItem({ project, focused, animating, onClick }) {
@@ -93,9 +181,9 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                 console.error('프로젝트 ID가 없습니다:', project);
             }
         } else {
-            // 포커스되지 않은 아이템이면 중앙으로 이동
+            // 포커스되지 않은 아이템이면 중앙으로 이동 (지연된 포커스 변경)
             if (onClick) {
-                onClick();
+                onClick(); // ProjectList의 handleItemClick 호출 (내부에서 지연된 포커스 변경 처리)
             }
         }
     };
@@ -132,17 +220,18 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
         <Container
             $focused={focused}
             onClick={handleClick}
-            // 포커스 상태에 따른 크기 애니메이션 - 조정 가능
+            // 포커스 상태에 따른 크기 애니메이션 - 이미지 사이즈 기준
             animate={{
-                width: focused ? 328 : 228,   // 포커스 시 더 넓게
-                height: focused ? 228 : 160,  // 포커스 시 더 높게
+                width: focused ? 320 : 240,   // Focused: 320px, Default: 240px
+                height: focused ? 220 : 164,  // Focused: 220px, Default: 164px  
                 zIndex: focused ? 2 : 1,      // 포커스 시 앞으로 가져오기
             }}
             // 애니메이션 설정 - 부드러운 스프링 효과
             transition={{ 
                 type: 'spring', 
-                stiffness: 300,  // 애니메이션 강도 - 높을수록 빠름
-                damping: 30      // 애니메이션 감쇠 - 높을수록 빨리 멈춤
+                stiffness: 100,  // 애니메이션 강도 - 300에서 200으로 줄여 더 부드럽게
+                damping: 10,     // 애니메이션 감쇠 - 30에서 25로 줄여 더 부드럽게
+                mass: 0.5    // 질량 추가 - 더 자연스러운 움직임
             }}
             style={{
                 margin: 0,
@@ -160,7 +249,46 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
             <DateText $focused={focused}>
                 {formatDate(project.createdAt || project.date)}
             </DateText>
+            
+            {/* 아이디어 카운터 (포커스 상태에서만 표시) */}
+            <IdeaCounterContainer $focused={focused}>
+                <CounterItem $focused={focused}>
+                    <CounterVolume 
+                        $focused={focused} 
+                        $colorIndex={3}
+                    />
+                    <CounterFrame 
+                        $focused={focused} 
+                        $colorIndex={3}
+                    />
+                    <CounterNumber $focused={focused}>16</CounterNumber>
+                </CounterItem>
+                
+                <CounterItem $focused={focused}>
+                    <CounterVolume 
+                        $focused={focused} 
+                        $colorIndex={2}
+                    />
+                    <CounterFrame 
+                        $focused={focused} 
+                        $colorIndex={2}
+                    />
+                    <CounterNumber $focused={focused}>4</CounterNumber>
+                </CounterItem>
+                
+                <CounterItem $focused={focused}>
+                    <CounterVolume 
+                        $focused={focused} 
+                        $colorIndex={1}
+                    />
+                    <CounterFrame 
+                        $focused={focused} 
+                        $colorIndex={1}
+                    />
+                    <CounterNumber $focused={focused}>8</CounterNumber>
+                </CounterItem>
+            </IdeaCounterContainer>
         </Container>
     );
-// ...existing code...
+
 }

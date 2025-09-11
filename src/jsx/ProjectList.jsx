@@ -1,36 +1,72 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import ProjectItem from './ProjectItem';
-import { motion, useAnimation } from 'framer-motion';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useLocation } from 'react-router-dom';
 
-const CarouselWrapper = styled.div`
+// 캐러셀 컨테이너 스타일
+const CarouselContainer = styled.div`
   width: 100%;
   height: 260px;
-  overflow: hidden;
   display: flex;
   justify-content: center;
+  align-items: center;
   margin-top: 40px;
   position: relative;
-  padding-left: 80px; /* 왼쪽 여백 추가 */
 `;
 
-const CarouselTrack = styled(motion.div)`
+// 캐러셀 래퍼 (스크롤 영역)
+const CarouselWrapper = styled.div`
+  width: 1194px; /* HomePageContainer와 동일한 너비 */
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  
+  /* scroll-behavior를 동적으로 제어 */
+  scroll-behavior: ${({ $quickSnap }) => $quickSnap ? 'auto' : 'smooth'};
+  
+  /* scroll-snap 속성 적용 - 동적으로 제어 */
+  scroll-snap-type: ${({ $scrollSnapDisabled }) => $scrollSnapDisabled ? 'none' : 'x mandatory'};
+  
+  /* 스크롤바 숨기기 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  &::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+  
+  /* 더 빠른 snap을 위한 CSS 속성 */
+  scroll-snap-align: ${({ $scrollSnapDisabled }) => $scrollSnapDisabled ? 'none' : 'center'};
+`;
+
+// 캐러셀 트랙 (아이템들을 담는 컨테이너)
+const CarouselTrack = styled.div`
   display: flex;
-  flex-direction: row;
-  gap: 32px;
   align-items: center;
+  gap: 32px;
+  /* 동적 패딩 계산: 첫 번째와 마지막 아이템이 중앙에 오도록 */
+  padding-left: 437px; /* 왼쪽 패딩 */
+  padding-right: 437px; /* 오른쪽 패딩 */
+  height: 100%;
+  min-width: max-content; /* 콘텐츠 크기에 맞춰 너비 조정 */
 `;
 
-const EmptyStateWrapper = styled.div`
+// 개별 아이템 래퍼
+const ItemWrapper = styled.div`
+  scroll-snap-align: center; /* 각 아이템이 중앙에 스냅되도록 */
+  scroll-snap-stop: always; /* 모든 아이템에서 반드시 멈추도록 */
+  flex-shrink: 0; /* 아이템 크기 고정 */
+`;
+
+// 로딩/에러 상태 래퍼
+const StateWrapper = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
   font-size: 16px;
-  color: #999;
+  color: ${({ $error }) => $error ? '#ff6b6b' : '#999'};
   font-weight: 400;
   width: 100%;
   text-align: center;
@@ -40,18 +76,16 @@ export default function ProjectList() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [focusIdx, setFocusIdx] = useState(0); // 첫 번째 아이템 초기 포커스
-  const controls = useAnimation();
+  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [scrollSnapDisabled, setScrollSnapDisabled] = useState(false);
+  const [quickSnap, setQuickSnap] = useState(false);
+  const [isDelayedFocusChanging, setIsDelayedFocusChanging] = useState(false);
   const location = useLocation();
-  const trackRef = useRef(null);
-
-  const ITEM_WIDTH = 228;
-  const ITEM_GAP = 32;
-  const TOTAL_ITEM_WIDTH = ITEM_WIDTH + ITEM_GAP;
-  const FOCUS_SCALE = 1.05;
+  const carouselRef = useRef(null);
+  const itemRefs = useRef([]);
 
   // Firestore에서 프로젝트 실시간 로드
-  const subscribeToProjects = () => {
+  const subscribeToProjects = useCallback(() => {
     setLoading(true);
     setError(null);
     
@@ -72,29 +106,27 @@ export default function ProjectList() {
             };
           });
           
-          // 날짜순 정렬 (최신순 - 새로운 프로젝트가 맨 앞에)
+          // 날짜순 정렬 (최신순)
           const sortedData = data.sort((a, b) => {
             const dateA = a.updatedAt || a.createdAt;
             const dateB = b.updatedAt || b.createdAt;
             
-            // Firestore Timestamp 객체인 경우
             if (dateA?.seconds && dateB?.seconds) {
               return dateB.seconds - dateA.seconds;
             }
             
-            // Date 객체인 경우
             const timeA = dateA instanceof Date ? dateA.getTime() : new Date(dateA || 0).getTime();
             const timeB = dateB instanceof Date ? dateB.getTime() : new Date(dateB || 0).getTime();
             
             return timeB - timeA;
           });
           
-          console.log('최종 변환된 프로젝트들:', sortedData);
           setProjects(sortedData);
           setLoading(false);
           
-          if (focusIdx >= data.length && data.length > 0) {
-            setFocusIdx(0);
+          // 첫 번째 아이템으로 포커스 설정
+          if (sortedData.length > 0) {
+            setFocusedIndex(0);
           }
         }, 
         (error) => {
@@ -111,12 +143,11 @@ export default function ProjectList() {
       setLoading(false);
       return null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     let unsubscribe = null;
     
-    // HomePage에서만 프로젝트를 실시간 로드
     if (location.pathname === '/') {
       unsubscribe = subscribeToProjects();
     } else {
@@ -128,85 +159,164 @@ export default function ProjectList() {
         unsubscribe();
       }
     };
-  }, [location.pathname]);
+  }, [location.pathname, subscribeToProjects]);
 
-  // 중앙 offset 계산
-  const calculateOffset = (index) => {
-    const container = document.querySelector('.kiWIK'); // HomePage 컨테이너
-    const containerWidth = container?.offsetWidth || 1194;
-    const scaledWidth = ITEM_WIDTH * FOCUS_SCALE;
-    const focusedItemPosition = index * TOTAL_ITEM_WIDTH + scaledWidth / 2;
-    return containerWidth / 2 - focusedItemPosition;
-  };
+  // 스크롤 이벤트로 현재 포커스된 아이템 감지
+  const handleScroll = useCallback(() => {
+    // 지연된 포커스 변경 중에는 스크롤 이벤트 무시
+    if (!carouselRef.current || projects.length === 0 || isDelayedFocusChanging) return;
 
-  // 첫 로드 시 위치 즉시 설정
-  useEffect(() => {
-    if (projects.length > 0) {
-      const initialOffset = calculateOffset(0); // 첫 번째 아이템 기준
-      controls.set({ x: initialOffset }); // 애니메이션 없이 즉시 적용
+    const container = carouselRef.current;
+    const containerCenter = container.scrollLeft + container.offsetWidth / 2;
+    
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+
+    itemRefs.current.forEach((item, index) => {
+      if (item) {
+        // 아이템의 실제 중앙 위치 계산 (패딩 포함)
+        const itemLeft = item.offsetLeft;
+        const itemWidth = item.offsetWidth;
+        const itemCenter = itemLeft + itemWidth / 2;
+        const distance = Math.abs(containerCenter - itemCenter);
+        
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      }
+    });
+
+    if (closestIndex !== focusedIndex) {
+      setFocusedIndex(closestIndex);
     }
-  }, [projects.length]);
+  }, [projects.length, focusedIndex, isDelayedFocusChanging]);
 
-  // focusIdx 변경 시 애니메이션 적용
+  // 스크롤 이벤트 리스너 등록
   useEffect(() => {
-    if (projects.length > 0) {
-      const offset = calculateOffset(focusIdx);
-      controls.start({
-        x: offset,
-        transition: { type: 'spring', stiffness: 500, damping: 35, duration: 0.4 },
+    const container = carouselRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  // 아이템 클릭 시 해당 아이템으로 스크롤 (지연된 포커스 변경)
+  const handleItemClick = useCallback((index) => {
+    const targetItem = itemRefs.current[index];
+    if (targetItem && carouselRef.current) {
+      const container = carouselRef.current;
+      
+      // 지연된 포커스 변경 시작
+      setIsDelayedFocusChanging(true);
+      
+      // scroll-snap 일시적으로 비활성화
+      setScrollSnapDisabled(true);
+      setQuickSnap(false);
+      
+      // 더 정확한 중앙 위치 계산
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = targetItem.getBoundingClientRect();
+      
+      // 컨테이너의 중앙점
+      const containerCenter = containerRect.width / 2;
+      
+      // 아이템의 현재 위치에서 컨테이너 중앙까지의 거리
+      const itemCurrentCenter = itemRect.left - containerRect.left + itemRect.width / 2;
+      const distanceToCenter = itemCurrentCenter - containerCenter;
+      
+      // 현재 스크롤 위치에서 조정
+      const targetScrollPosition = container.scrollLeft + distanceToCenter;
+      
+      // 부드러운 스크롤 애니메이션
+      container.scrollTo({
+        left: targetScrollPosition,
+        behavior: 'smooth'
       });
+      
+      // 0.5초 후에 포커스 변경 (크기 변화 지연)
+      setTimeout(() => {
+        setFocusedIndex(index);
+        setIsDelayedFocusChanging(false); // 지연된 포커스 변경 완료
+      }, 270);
+      
+      // 짧은 시간 후 scroll-snap 다시 활성화하여 빠른 최종 조정
+      setTimeout(() => {
+        setScrollSnapDisabled(false);
+        setQuickSnap(true); // 빠른 snap 활성화
+        
+        // 최종 정확한 위치로 즉시 조정
+        setTimeout(() => {
+          const finalItemCenter = targetItem.offsetLeft + targetItem.offsetWidth / 2;
+          const finalContainerCenter = container.offsetWidth / 2;
+          const finalScrollPosition = finalItemCenter - finalContainerCenter;
+          
+          container.scrollTo({
+            left: finalScrollPosition,
+            behavior: 'auto' // 즉시 이동
+          });
+          
+          // 원래 상태로 복원
+          setTimeout(() => {
+            setQuickSnap(false);
+          }, 100);
+        }, 50);
+      }, 300); // 더 빠른 snap 활성화
     }
-  }, [focusIdx]);
+  }, []);
 
-  // 아이템 클릭 시 포커스 이동
-  const handleItemClick = (clickedIdx) => {
-    if (clickedIdx !== focusIdx) {
-      setFocusIdx(clickedIdx);
-    }
-  };
+  if (loading) {
+    return (
+      <CarouselContainer>
+        <StateWrapper>프로젝트를 불러오는 중...</StateWrapper>
+      </CarouselContainer>
+    );
+  }
+
+  if (error) {
+    return (
+      <CarouselContainer>
+        <StateWrapper $error>프로젝트 로드 중 오류 발생: {error}</StateWrapper>
+      </CarouselContainer>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <CarouselContainer>
+        <StateWrapper>아직 프로젝트가 없습니다. 새로운 실험을 시작해보세요!</StateWrapper>
+      </CarouselContainer>
+    );
+  }
 
   return (
-    <CarouselWrapper>
-      {loading ? (
-        <EmptyStateWrapper>프로젝트를 불러오는 중...</EmptyStateWrapper>
-      ) : error ? (
-        <EmptyStateWrapper style={{ color: '#ff6b6b' }}>
-          프로젝트 로드 중 오류 발생: {error}
-        </EmptyStateWrapper>
-      ) : projects.length === 0 ? (
-        <EmptyStateWrapper>아직 프로젝트가 없습니다. 새로운 실험을 시작해보세요!</EmptyStateWrapper>
-      ) : (
-        <CarouselTrack ref={trackRef} animate={controls}>
-          {projects.map((item, idx) => {
-            const isFocused = idx === focusIdx;
-            return (
-              <motion.div
-                key={item.id}
-                style={{
-                  transformOrigin: 'center center', // 포커스 시 중앙 기준
-                  scale: isFocused ? FOCUS_SCALE : 1,
-                  transition: 'scale 0.3s ease',
+    <CarouselContainer>
+      <CarouselWrapper 
+        ref={carouselRef} 
+        $scrollSnapDisabled={scrollSnapDisabled}
+        $quickSnap={quickSnap}
+      >
+        <CarouselTrack>
+          {projects.map((project, index) => (
+            <ItemWrapper
+              key={project.id}
+              ref={(el) => (itemRefs.current[index] = el)}
+            >
+              <ProjectItem
+                project={{
+                  id: project.id,
+                  title: project.title || project.name || '제목 없음',
+                  createdAt: project.createdAt,
+                  date: project.date,
                 }}
-              >
-                <ProjectItem
-                  project={{
-                    id: item.id,
-                    title: item.title || item.name || '제목 없음',
-                    date: new Date(
-                      item.createdAt?.seconds
-                        ? item.createdAt.seconds * 1000
-                        : item.createdAt || Date.now()
-                    ).toLocaleDateString('ko-KR'),
-                  }}
-                  focused={isFocused}
-                  animating={false}
-                  onClick={() => handleItemClick(idx)}
-                />
-              </motion.div>
-            );
-          })}
+                focused={index === focusedIndex}
+                animating={false}
+                onClick={() => handleItemClick(index)}
+              />
+            </ItemWrapper>
+          ))}
         </CarouselTrack>
-      )}
-    </CarouselWrapper>
+      </CarouselWrapper>
+    </CarouselContainer>
   );
 }
