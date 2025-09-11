@@ -16,6 +16,7 @@ const AddItemWrap = styled.div`
   height: 64px;
   padding: 8px 0px;
   cursor: pointer;
+  margin: 0px 14px;
 `;
 
 const AddBox = styled.div`
@@ -40,7 +41,7 @@ const SidebarContainer = styled.div`
   height: 720px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
-  padding: 10px 14px;
+  padding: 10px 0px;
   background: #fff;
   box-sizing: border-box;
   display: flex;
@@ -71,6 +72,7 @@ const BtnWrap = styled.div`
   display: flex;
   flex-direction: row;
   justify-content: space-between;
+  margin: 0px 14px;
 `;
 
 const Btn = styled.button`

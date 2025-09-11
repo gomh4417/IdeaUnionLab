@@ -9,9 +9,9 @@ const ItemWrap = styled.div`
   display: flex;
   align-items: center;
   width: 100%;
-  min-width: 236px;
   transform: translateX(-14px) ${({ $slid }) => $slid ? 'translateX(-44px)' : ''};
   height: 64px;
+  margin: 0px 14px;
   padding: 8px 0px 8px 10px;
   cursor: pointer;
   background: ${({ $type }) => $type === 'activated' ? theme.colors.secondary : '#fff'};
@@ -32,7 +32,7 @@ const DeleteArea = styled.div`
 
 const DeleteBtn = styled.button`
   position: absolute;
-  right: -40px;
+  right: -44px;
   top: 0px;
   width: 44px;
   height: 64px;
@@ -81,6 +81,7 @@ const Title = styled.div`
   margin-bottom: 2px;
   line-height: 140%;
   letter-spacing: -0.02em;
+  max-width: 132px;
 `;
 
 const Tag = styled.div`
