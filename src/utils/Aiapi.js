@@ -4,13 +4,13 @@ import { storage } from "../firebase.js";
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const API_URL = "https://api.openai.com/v1/chat/completions";
 const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY;
-const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/sd3";
+const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/ultra";
 
 // 개발 환경에서 프록시 사용 여부 (CORS 우회용)
 const USE_PROXY = import.meta.env.DEV; // 개발 모드에서만 프록시 사용
 const PROXY_FIREBASE_STORAGE = "/firebase-storage";
 const PROXY_FIREBASE_STORAGE_NEW = "/firebase-storage-new";
-const PROXY_STABILITY_API = "/stability-api/v2beta/stable-image/generate/sd3";
+const PROXY_STABILITY_API = "/stability-api/v2beta/stable-image/generate/ultra";
 
 // =============================================================================
 
@@ -43,38 +43,41 @@ Description: {DESCRIPTION}
 
 {REFERENCE_IMAGE_INFO}
 
-### Stability AI Prompt Requirements:
-1. COMPLETE PRODUCT VISIBILITY - entire product must be fully visible within frame
-2. Proper framing with adequate space around product (not cropped or cut off)
-3. Single product focus - no multiple items or distracting elements
-4. Professional product photography style with studio lighting
-5. Clean white background or subtle gradient
-6. High-quality materials and finishes clearly visible
-7. Proper lighting that shows all product details without harsh shadows
-8. Modern, clean aesthetic suitable for commercial use
-9. Sharp focus and high resolution appearance
+### Stability AI Ultra Model Prompt Requirements:
+1. PHOTOREALISTIC RENDERING - ultra-realistic commercial-grade product visualization
+2. COMPLETE PRODUCT VISIBILITY - entire product must be fully visible within frame  
+3. Proper framing with adequate space around product (not cropped or cut off)
+4. Single product focus - no multiple items or distracting elements
+5. Professional studio product photography with advanced lighting setup
+6. Clean white background or subtle professional gradient
+7. Premium materials and finishes with realistic textures and reflections
+8. Perfect lighting that shows all product details without harsh shadows
+9. Ultra-modern, premium aesthetic suitable for high-end commercial use
+10. Ultra-sharp focus and 8K resolution quality appearance
 10. Full product view from optimal angle
 11. MAINTAIN ORIGINAL PRODUCT TYPE - if input shows a vacuum cleaner, output must be a vacuum cleaner
 
-Create a detailed English prompt (max 150 words) that describes:
+Create a detailed English prompt (max 120 words) optimized for Ultra model that describes:
 - The EXACT product type mentioned in the title and description
-- Key features and improvements described in the product description
-- Materials, textures, and finishes appropriate for this specific product
-- Professional photography setup with full product visibility
-- Clean background and proper framing
+- Key features and improvements described in the product description  
+- Premium materials, textures, and finishes appropriate for this specific product
+- Professional studio photography setup with advanced lighting
+- Ultra-clean background and perfect framing
 - PRODUCT TYPE CONSISTENCY - ensure the generated image matches the original product category
+- Commercial-grade photorealistic quality
 
-CRITICAL INSTRUCTIONS:
+CRITICAL INSTRUCTIONS FOR ULTRA MODEL:
 1. Focus PRIMARILY on the product title and description - this is the main product to generate
 2. Do NOT generate random products - stick to what's described in the title/description
-3. Always include keywords like "full product view", "completely visible", "not cropped", "proper framing"
+3. Always include keywords like "photorealistic", "commercial grade", "ultra-sharp", "professional studio"
 4. If the vision analysis mentions different objects, ignore them and focus on the title/description
 5. PRESERVE PRODUCT TYPE - if original is a cleaning device, ensure output is also a cleaning device
 6. Add specific product type keywords to reinforce consistency (e.g., "vacuum cleaner", "cleaning appliance")
+7. Include premium quality descriptors: "ultra-realistic", "high-end", "premium finish"
 
-Focus on creating a prompt that will produce the EXACT product described in the title and description, with complete visibility and premium quality.
+Focus on creating a prompt that will produce the EXACT product described in the title and description, with photorealistic commercial quality and complete visibility.
 
-Output only the English prompt:`;
+Output only the optimized English prompt:`;
 
 // 3. 제품 정보 개선 프롬프트 템플릿
 const PRODUCT_IMPROVEMENT_PROMPT_TEMPLATE = `역할: 당신은 제품 디자인 전문가입니다. 분석 결과를 바탕으로 개선된 제품 정보를 JSON으로 반환하세요.
@@ -845,8 +848,8 @@ export async function generateStabilityPrompt(title, description, visionResult, 
                         title.toLowerCase().includes('선반') ? 'shelf' :
                         'product';
     
-    const fallbackPrompt = `Full product view of ${productType} based on "${title}", completely visible, not cropped, proper framing, adequate spacing around product, professional product photography, modern design, clean materials, clean white background, studio lighting, commercial quality, high resolution`;
-    console.log('Fallback 프롬프트 사용:', fallbackPrompt);
+    const fallbackPrompt = `Photorealistic commercial-grade rendering of ${productType} based on "${title}", ultra-realistic, completely visible, not cropped, proper framing, adequate spacing around product, professional studio photography, premium materials, clean white background, advanced lighting setup, ultra-sharp details, 8K resolution quality, high-end commercial visualization`;
+    console.log('Ultra Model Fallback 프롬프트 사용:', fallbackPrompt);
     return fallbackPrompt;
   }
 }
@@ -861,11 +864,11 @@ export async function generateProductImageWithStability(promptText, originalImag
       throw new Error('Stability AI API 키가 설정되지 않았습니다.');
     }
     
-    // FormData 생성
+    // FormData 생성 - Ultra 모델용 (model 파라미터 불필요)
     const formData = new FormData();
-    formData.append('prompt', promptText);
-    formData.append('mode', 'text-to-image');
-    formData.append('model', 'sd3.5-large'); // 최신 고품질 모델
+    // 고품질 제품 렌더링을 위한 프롬프트 강화
+    const enhancedPrompt = `Professional high-quality product photography, photorealistic rendering, ${promptText}, commercial grade image, studio lighting, ultra-sharp details, premium finish, 8K resolution quality`;
+    formData.append('prompt', enhancedPrompt);
     formData.append('aspect_ratio', '1:1');
     formData.append('output_format', 'png');
     
@@ -1168,11 +1171,10 @@ export const generateImage = async (prompt) => {
       throw new Error('Stability AI API 키가 설정되지 않았습니다.');
     }
 
-    // FormData 생성
+    // FormData 생성 - Ultra 모델용 고품질 렌더링
     const formData = new FormData();
-    formData.append('prompt', enhancedPrompt);
-    formData.append('mode', 'text-to-image');
-    formData.append('model', 'sd3.5-large');
+    const ultraPrompt = `Professional high-quality product photography, photorealistic rendering, ${enhancedPrompt}, commercial grade image, studio lighting, ultra-sharp details, premium finish, 8K resolution quality`;
+    formData.append('prompt', ultraPrompt);
     formData.append('aspect_ratio', '1:1');
     formData.append('output_format', 'png');
 
@@ -1255,11 +1257,10 @@ export const generateProductImageWithStability_I2I = async (prompt, imageUrl, st
 
     console.log('🔧 개선된 프롬프트:', enhancedPrompt);
 
-    // FormData 생성 (img2img용) - CORS 우회를 위한 설정 추가
+    // FormData 생성 (img2img용 Ultra 모델) - 최고 품질 렌더링
     const formData = new FormData();
-    formData.append('prompt', enhancedPrompt);
-    formData.append('mode', 'image-to-image');
-    formData.append('model', 'sd3.5-large');
+    const ultraPrompt = `Professional high-quality product photography, photorealistic rendering, ${enhancedPrompt}, commercial grade image, studio lighting, ultra-sharp details, premium finish, 8K resolution quality`;
+    formData.append('prompt', ultraPrompt);
     formData.append('image', blob, 'input.png');
     formData.append('strength', Math.min(strength, 0.6).toString()); // 원본 특성 더 유지하도록 강도 조정
     formData.append('output_format', 'png');
