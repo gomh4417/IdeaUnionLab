@@ -108,7 +108,7 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar({ projects, activatedId, setActivatedId, onDeleteItem, projectId, onDragStateChange }) {
+export default function Sidebar({ projects, activatedId, onDeleteItem, projectId, onDragStateChange }) {
   const [active, setActive] = useState('raw');
   const navigate = useNavigate();
   

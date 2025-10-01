@@ -13,6 +13,10 @@ const typeToIconName = {
   save: 'save',
   settings: 'settings',
   delete: 'delete',
+  source_notes: 'source_notes',
+  keyboard_arrow_down: 'expand_more',
+  expand_more: 'expand_more',
+  arrow_drop_down: 'arrow_drop_down',
 };
 
 export default function Icons({ type, size = 24, color = 'inherit', style = {}, ...rest }) {

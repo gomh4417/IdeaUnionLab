@@ -2,11 +2,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import Sidebar from '../jsx/Sidebar';
 import Header from '../jsx/Header';
 import styled from 'styled-components';
-import { theme } from '../styles/theme';
+import { theme } from "../styles/theme.js";
 import { useDrop } from 'react-dnd';
 import { useState, useEffect } from 'react';
 import Icons from '../jsx/Icons';
-import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { analyzeIdea, analyzeReferenceImage, improveProductInfo } from '../utils/Aiapi';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
@@ -91,7 +91,7 @@ function LabPage() {
   const [items, setItems] = useState([]);
   
   // 프로젝트 정보 상태
-  const [projectInfo, setProjectInfo] = useState(null);
+  const [, setProjectInfo] = useState(null);
   const [isDraggingItem, setIsDraggingItem] = useState(false);
   
   // 드롭 상태 관리
@@ -107,35 +107,35 @@ function LabPage() {
   const [referenceImage, setReferenceImage] = useState(null); // 레퍼런스 이미지 상태
   
   // 개선된 제품 정보 상태 (GPT 응답 후 업데이트)
-  const [improvedProduct, setImprovedProduct] = useState(null);
+  const [, setImprovedProduct] = useState(null);
   
   // gif 반복 재생을 위한 key state
   const [gifKey, setGifKey] = useState(Date.now());
 
   // generation 계산 함수 - 실험 결과로 생성될 generation을 계산
-  const calculateNextGeneration = (item) => {
-    if (!item) return 1;
+  // const calculateNextGeneration = (item) => {
+  //   if (!item) return 1;
     
-    // 원본 아이디어(type이 없거나 'original')에서 실험하면 1차 생성물
-    if (!item.type || item.type === 'original') {
-      return 1;
-    }
+  //   // 원본 아이디어(type이 없거나 'original')에서 실험하면 1차 생성물
+  //   if (!item.type || item.type === 'original') {
+  //     return 1;
+  //   }
     
-    // 생성물인 경우 현재 generation + 1
-    if (item.type === 'generated') {
-      // Firebase에 generation이 직접 저장되어 있다면 사용
-      if (typeof item.generation === 'number') {
-        return item.generation + 1;
-      }
+  //   // 생성물인 경우 현재 generation + 1
+  //   if (item.type === 'generated') {
+  //     // Firebase에 generation이 직접 저장되어 있다면 사용
+  //     if (typeof item.generation === 'number') {
+  //       return item.generation + 1;
+  //     }
       
-      // additiveType이 있으면 최소 1차 생성물이므로 다음은 2차
-      if (item.additiveType) {
-        return (item.generation || 1) + 1;
-      }
-    }
+  //     // additiveType이 있으면 최소 1차 생성물이므로 다음은 2차
+  //     if (item.additiveType) {
+  //       return (item.generation || 1) + 1;
+  //     }
+  //   }
     
-    return 1;
-  };
+  //   return 1;
+  // };
 
   // DropItem 표시용 generation 계산 함수 - 현재 아이템의 generation
   const calculateCurrentGeneration = (item) => {
@@ -291,7 +291,7 @@ function LabPage() {
       return;
     }
     
-    const itemIndex = items.findIndex(item => item.id === itemId);
+    // const itemIndex = items.findIndex(item => item.id === itemId);
     
     try {
       // Firebase에서 아이디어 문서 삭제
@@ -418,6 +418,10 @@ function LabPage() {
               onClear={handleClearSelection}
               loading={loading}
               loadingColor={selectedAdditive ? ADDITIVE_COLORS[selectedAdditive] : null}
+              // 히스토리 버튼을 위한 데이터
+              projectId={projectId}
+              ideaId={selectedItem.id}
+              sourceExperimentId={selectedItem.sourceExperimentId || null}
             />
           ) : (
             // 최초 상태의 안내 화면 (absolute positioned)
@@ -493,24 +497,28 @@ function LabPage() {
                   console.log('🔬 실험 시작:', experimentId, '| 첨가제:', selectedAdditive, '| 레퍼런스:', !!referenceImage);
                 }
                 
-                // 실험 데이터 구조 (GPT 프롬프트 제거)
+                // 실험 데이터 구조 - ResultPage와 일관된 구조로 수정
                 const experimentData = {
                   id: experimentId,
                   ideaId: currentIdea.id,
                   projectId,
-                  additive: {
-                    type: selectedAdditive,
-                    intensity: sliderValue / 100,
-                    description: `${selectedAdditive} 첨가제 ${sliderValue}% 강도`
-                  },
+                  
+                  // 실험 조건 정보 (플랫 구조)
+                  additiveType: selectedAdditive,
+                  additiveIntensity: sliderValue / 100,
+                  
+                  // 원본 아이디어 정보
                   originalIdea: {
                     title: currentIdea.title,
                     description: currentIdea.description,
                     imageUrl: currentIdea.imageUrl,
                     tags: currentIdea.tags || []
                   },
+                  
+                  // 실험 상태
                   status: 'processing', // 'processing' -> 'completed'
-                  result: null, // GPT 응답이 저장되는 위치
+                  
+                  // 타임스탬프
                   createdAt: new Date(),
                   updatedAt: new Date()
                 };
@@ -527,12 +535,8 @@ function LabPage() {
                   // 실험 데이터 생성 완료
                 }
                 
-                // Firebase에 실험 데이터 저장
-                await setDoc(doc(db, "projects", projectId, "ideas", currentIdea.id, "experiments", experimentId), experimentData);
-                
-                if (import.meta.env.DEV) {
-                  console.log('실험 데이터 Firebase 저장 완료');
-                }
+                // Firebase 저장은 ResultPage에서 처리 (실험 완료 시)
+                console.log('� LabPage - 실험 ID 생성 완료, ResultPage로 전달 예정:', experimentId);
                 
                 // GPT API 호출로 실제 아이디어 생성
                 try {

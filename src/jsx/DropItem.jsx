@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from 'styled-components';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+import HistoryBtn from './HistoryBtn';
+import HistoryList from './HistoryList';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../firebase';
 
 const ICONS = {
   creativity: '/creativity.svg',
@@ -27,10 +32,25 @@ const Container = styled.div`
 const ChipRow = styled.div`
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: 8px;
   margin-bottom: 8px;
   margin-top: 8px;
+`;
+
+const ChipRowSpaceBetween = styled.div`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  margin-top: 8px;
+`;
+
+const ChipGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
 `;
 
 const Chip = styled.div`
@@ -173,10 +193,89 @@ export default function DropItem({
   pageType = 'lab',
   loading = false,
   loadingColor = null,
-  loadingExit = false
+  loadingExit = false,
+  // 히스토리 버튼을 위한 데이터
+  projectId = null,
+  ideaId = null,
+  sourceExperimentId = null,
+  // HistoryList 표시 여부 (과거 기록 보기 모드인지)
+  showHistoryList = false
 }) {
   const theme = useTheme();
-  
+  const navigate = useNavigate();
+
+  // 히스토리 버튼 클릭 핸들러
+  const handleHistoryClick = async () => {
+    
+    if (!projectId || !ideaId || !sourceExperimentId) {
+      alert('히스토리 데이터를 불러올 수 없습니다.');
+      return;
+    }
+
+    try {
+      
+      // 하드코딩 방식: 직접 Firebase에서 문서 가져오기
+      const experimentRef = doc(db, 'projects', projectId, 'ideas', ideaId, 'experiments', sourceExperimentId);
+      const experimentDoc = await getDoc(experimentRef);
+      
+      if (!experimentDoc.exists()) {
+        alert('실험 기록을 찾을 수 없습니다.');
+        return;
+      }
+      
+      const experimentData = experimentDoc.data();
+
+      // ResultPage로 이동 (하드코딩된 필드명으로 데이터 파싱)
+      navigate('/result', {
+        state: {
+          experimentId: sourceExperimentId,
+          projectId,
+          ideaId,
+          originalIdea: {
+            id: ideaId,
+            title: experimentData.dropItem_title || title,
+            imageUrl: experimentData.dropItem_imageUrl || imageUrl,
+            description: experimentData.dropItem_description || content,
+            type: 'generated',
+            additiveType: experimentData.experiment_additiveType,
+            generation: experimentData.experiment_generation
+          },
+          // 실험 조건 정보
+          additiveType: experimentData.experiment_additiveType,
+          additiveIntensity: experimentData.experiment_additiveIntensity,
+          referenceImage: experimentData.extra_referenceImageUrl || null,
+          visionAnalysis: experimentData.extra_visionAnalysis || null,
+          // ResultReport용 GPT 응답 복원 (하드코딩된 필드명으로)
+          gptResponse: {
+            title: experimentData.report_gptTitle || '',
+            description: experimentData.report_gptDescription || '',
+            steps: [
+              {
+                title: experimentData.report_step1_title || '',
+                content: experimentData.report_step1_content || ''
+              },
+              {
+                title: experimentData.report_step2_title || '',
+                content: experimentData.report_step2_content || ''
+              },
+              {
+                title: experimentData.report_step3_title || '',
+                content: experimentData.report_step3_content || ''
+              },
+              {
+                title: experimentData.report_step4_title || '',
+                content: experimentData.report_step4_content || ''
+              }
+            ].filter(step => step.title || step.content) // 빈 단계 제거
+          },
+          needsSaving: false // 기존 데이터이므로 저장 불필요
+        }
+      });
+    } catch (error) {
+      console.error('히스토리 데이터 로드 실패:', error);
+      alert('히스토리를 불러오는 중 오류가 발생했습니다.');
+    }
+  };
 
   const labTexts = [
     "사용자의 원재료를 분석하고 있어요",
@@ -236,15 +335,26 @@ export default function DropItem({
     <Container $isresult={isResult}>
       {/* ResultPage: 생성물이고 additiveType이 있고 generation이 1 이상인 경우 Image 위에 chip 표시 */}
       {isResultPage && isResult && additiveType && generation >= 1 && (
-        <ChipRow>
-          <Chip $brandcolor={brandColor}>
-            <ChipIcon src={ICONS[additiveType] || ICONS['creativity']} alt="icon" />
-            <ChipText $brandcolor={brandColor}>{generation}차 생성물</ChipText>
-          </Chip>
-          <ChipLabel $brandcolor={brandColor}>
-            생성된 아이디어
-          </ChipLabel>
-        </ChipRow>
+        <ChipRowSpaceBetween>
+          <ChipGroup>
+            <Chip $brandcolor={brandColor}>
+              <ChipIcon src={ICONS[additiveType] || ICONS['creativity']} alt="icon" />
+              <ChipText $brandcolor={brandColor}>{generation}차 생성물</ChipText>
+            </Chip>
+            <ChipLabel $brandcolor={brandColor}>
+              생성된 아이디어
+            </ChipLabel>
+          </ChipGroup>
+          {/* HistoryList 컴포넌트 (과거 기록 보기 모드에서만 표시) */}
+          {showHistoryList && projectId && ideaId && (
+            <HistoryList
+              currentGeneration={generation}
+              projectId={projectId}
+              ideaId={ideaId}
+              additiveType={additiveType}
+            />
+          )}
+        </ChipRowSpaceBetween>
       )}
       
       {imageUrl ? (
@@ -314,6 +424,10 @@ export default function DropItem({
             <ChipIcon src={ICONS[additiveType] || ICONS['creativity']} alt="icon" />
             <ChipText $brandcolor={brandColor}>{generation}차 생성물</ChipText>
           </Chip>
+          {/* 히스토리 버튼 (소스 실험 ID가 있는 경우만) */}
+          {sourceExperimentId && (
+            <HistoryBtn onClick={handleHistoryClick} />
+          )}
         </ChipRow>
       )}
       

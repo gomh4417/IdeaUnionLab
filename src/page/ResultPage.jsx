@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
 import { improveProduct, analyzeImageWithVision } from '../utils/Aiapi';
@@ -76,6 +76,12 @@ function ResultPage() {
     let mounted = true;
 
     const run = async () => {
+      // 과거 기록 보기 모드에서는 AI API 호출하지 않음
+      if (!needsSaving) {
+        console.log('🔍 과거 기록 보기 모드 - AI API 호출 생략');
+        return;
+      }
+      
       if (!gptResponse?.steps || !originalIdea) return;
       try {
         setLoadingImprovedInfo(true);
@@ -177,17 +183,19 @@ function ResultPage() {
 
     run();
     return () => { mounted = false; };
-  }, [gptResponse, originalIdea, additiveType, visionAnalysis]);
+  }, [gptResponse, originalIdea, additiveType, visionAnalysis, needsSaving, additiveIntensity, referenceImage]);
 
   // dataURL이면 Storage에 업로드해서 https URL로 치환
   const ensureUrlStored = async (maybeDataUrl, pathId) => {
     if (!maybeDataUrl) return null;
     if (typeof maybeDataUrl === 'string' && maybeDataUrl.startsWith('data:')) {
-      // projects/{projectId}/results/{pathId}.png 로 저장 (경로는 자유롭게 조절)
-      return await uploadDataUrl(
+      console.log('Firebase Storage 업로드 시작:', pathId);
+      const storedUrl = await uploadDataUrl(
         maybeDataUrl,
         `projects/${projectId}/results/${pathId}.png`
       );
+      console.log('Firebase Storage 업로드 완료:', storedUrl);
+      return storedUrl;
     }
     return maybeDataUrl; // 이미 https URL이면 그대로 사용
   };
@@ -208,7 +216,7 @@ function ResultPage() {
       // 2) steps 등 중첩 데이터는 clean 처리
       const safeSteps = clean(gptResponse?.steps);
 
-      // 3) 실험 문서 업데이트
+      // 3) 실험 문서 업데이트 - HistoryBtn에서 쉽게 파싱할 수 있는 구조로 저장
       const experimentRef = doc(
         db,
         'projects',
@@ -219,33 +227,83 @@ function ResultPage() {
         experimentId
       );
 
-      const finalExperimentData = clean({
+      // 하드코딩 방식: 모든 필요한 데이터를 직접 필드로 저장 (강제 저장)
+      const finalExperimentData = {
+        // === 기본 식별 정보 === (강제 저장)
+        experimentId: String(experimentId || 'unknown'),
+        projectId: String(projectId || 'unknown'), 
+        ideaId: String(ideaId || 'unknown'),
         status: 'completed',
-        result: {
-          title: improvedIdea?.title || gptResponse?.title || originalIdea?.title,
-          description:
-            improvedIdea?.description ||
-            gptResponse?.description ||
-            originalIdea?.description,
-          imageUrl: finalResultImageUrl,       // ✅ URL만 저장
-          steps: safeSteps,
-          ...(improvedIdea?.dalleGenerated && {
-            dalleGenerated: true,
-            originalImagePrompt: improvedIdea.originalImagePrompt || null
-          }),
-          ...(improvedIdea?.dalleError && {
-            dalleGenerationFailed: true,
-            dalleError: improvedIdea.dalleError || null
-          })
-        },
-        ...(additiveType === 'aesthetics' && referenceImage && {
-          referenceImageUrl: referenceImage
-        }),
-        completedAt: new Date(),
-        updatedAt: new Date()
-      });
+        
+        // === DropItem에서 사용할 정보 === (강제 저장)
+        dropItem_title: String(improvedIdea?.title || gptResponse?.title || originalIdea?.title || '제목 없음'),
+        dropItem_description: String(improvedIdea?.description || gptResponse?.description || originalIdea?.description || '설명 없음'),
+        dropItem_imageUrl: String(finalResultImageUrl || ''),
+        dropItem_type: 'generated',
+        dropItem_generation: Number(calculateGeneration(originalIdea)),
+        
+        // === 실험 조건 정보 === (강제 저장)
+        experiment_additiveType: String(additiveType || 'unknown'),
+        experiment_additiveIntensity: Number(additiveIntensity || 0),
+        experiment_generation: Number(calculateGeneration(originalIdea)),
+        experiment_originIdeaId: String(ideaId || 'unknown'),
+        
+        // === ResultReport에서 사용할 GPT 응답 === (강제 저장)
+        report_gptTitle: String(gptResponse?.title || ''),
+        report_gptDescription: String(gptResponse?.description || ''),
+        report_step1_title: String(gptResponse?.steps?.[0]?.title || ''),
+        report_step1_content: String(gptResponse?.steps?.[0]?.content || ''),
+        report_step2_title: String(gptResponse?.steps?.[1]?.title || ''),
+        report_step2_content: String(gptResponse?.steps?.[1]?.content || ''),
+        report_step3_title: String(gptResponse?.steps?.[2]?.title || ''),
+        report_step3_content: String(gptResponse?.steps?.[2]?.content || ''),
+        report_step4_title: String(gptResponse?.steps?.[3]?.title || ''),
+        report_step4_content: String(gptResponse?.steps?.[3]?.content || ''),
+        report_steps_raw: JSON.stringify(safeSteps || []),
+        
+        // === 추가 정보들 === (강제 저장)
+        extra_referenceImageUrl: String(additiveType === 'aesthetics' ? (referenceImage || '') : ''),
+        extra_visionAnalysis: String(visionAnalysis || ''),
+        extra_dalleGenerated: Boolean(improvedIdea?.dalleGenerated || false),
+        extra_dalleError: String(improvedIdea?.dalleError || ''),
+        extra_originalImagePrompt: String(improvedIdea?.originalImagePrompt || ''),
+        
+        // === 타임스탬프 === (강제 저장)
+        timestamp_created: new Date().toISOString(),
+        timestamp_completed: new Date().toISOString(),
+        
+        // === 원본 데이터 백업 === (디버깅용 - imageUrl 제외하여 1MB 제한 방지)
+        debug_originalIdea: JSON.stringify(originalIdea ? {
+          ...originalIdea,
+          imageUrl: originalIdea?.imageUrl ? '[IMAGE_URL_REMOVED]' : null
+        } : {}),
+        debug_improvedIdea: JSON.stringify(improvedIdea ? {
+          ...improvedIdea,
+          imageUrl: improvedIdea?.imageUrl ? '[IMAGE_URL_REMOVED]' : null
+        } : {}),
+        debug_gptResponse: JSON.stringify(gptResponse || {}),
+        debug_additiveType: String(additiveType || ''),
+        debug_additiveIntensity: String(additiveIntensity || ''),
+        debug_visionAnalysis: String(visionAnalysis || '').substring(0, 500), // 500자로 제한
+        debug_referenceImage: referenceImage ? '[REFERENCE_IMAGE_URL]' : ''
+      };
 
-      await updateDoc(experimentRef, finalExperimentData);
+      console.log('Firebase 실험 데이터 저장 시작:', {
+        path: `projects/${projectId}/ideas/${ideaId}/experiments/${experimentId}`,
+        dataKeys: Object.keys(finalExperimentData),
+        dropItem_title: finalExperimentData.dropItem_title,
+        dropItem_description: finalExperimentData.dropItem_description,
+        report_gptTitle: finalExperimentData.report_gptTitle,
+        report_step1_title: finalExperimentData.report_step1_title,
+        report_step2_title: finalExperimentData.report_step2_title,
+        report_step3_title: finalExperimentData.report_step3_title,
+        report_step4_title: finalExperimentData.report_step4_title
+      });
+      
+      // 강제 저장 (merge 없이)
+      await setDoc(experimentRef, finalExperimentData);
+      
+      console.log('Firebase 실험 데이터 강제 저장 완료 - 모든 필드 저장됨');
 
       // 4) 생성물 아이디어 문서 생성
       const { id: newIdeaId } = await getNextIdWithCounter(
@@ -262,16 +320,16 @@ function ResultPage() {
       let newVisionAnalysis = null;
       if (finalGeneratedImageUrl) {
         try {
-          console.log('🔍 생성된 이미지에 대한 Vision API 분석 시작...');
+          console.log('생성된 이미지에 대한 Vision API 분석 시작...');
           newVisionAnalysis = await analyzeImageWithVision(finalGeneratedImageUrl);
-          console.log('✅ Vision API 분석 완료:', newVisionAnalysis?.substring(0, 100) + '...');
+          console.log('Vision API 분석 완료:', newVisionAnalysis?.substring(0, 100) + '...');
         } catch (visionError) {
-          console.warn('⚠️ Vision API 분석 실패:', visionError.message);
+          console.warn('Vision API 분석 실패:', visionError.message);
           // Vision 분석 실패해도 저장은 계속 진행
           newVisionAnalysis = `이미지 분석 중 오류가 발생했습니다: ${visionError.message}`;
         }
       } else {
-        console.warn('⚠️ 분석할 이미지 URL이 없습니다.');
+        console.warn('분석할 이미지 URL이 없습니다.');
         newVisionAnalysis = '이미지 URL이 없어 분석을 수행할 수 없습니다.';
       }
 
@@ -307,6 +365,14 @@ function ResultPage() {
       });
 
       await setDoc(doc(db, 'projects', projectId, 'ideas', newIdeaId), generatedIdeaData);
+
+      // 실험 데이터에 결과 아이디어 ID 업데이트 (하드코딩 방식)
+      await setDoc(experimentRef, { experiment_resultIdeaId: newIdeaId }, { merge: true });
+
+      console.log('실험 및 결과 아이디어 저장 완료:', {
+        experimentId,
+        resultIdeaId: newIdeaId
+      });
 
       alert('실험 결과가 성공적으로 저장되었습니다!');
       navigate('/lab', { state: { projectId } });
@@ -348,6 +414,12 @@ function ResultPage() {
             loading={true}
             loadingColor={ADDITIVE_COLORS[additiveType] || '#5755FE'}
             loadingExit={loadingExit}
+            // 히스토리 버튼을 위한 데이터 (로딩 중에는 표시하지 않음)
+            projectId={projectId}
+            ideaId={ideaId}
+            sourceExperimentId={null}
+            // 로딩 중에는 HistoryList 표시하지 않음
+            showHistoryList={false}
           />
         ) : improvedIdea ? (
           <DropItem
@@ -358,6 +430,12 @@ function ResultPage() {
             additiveType={additiveType}
             generation={calculateGeneration(originalIdea)}
             pageType="result"
+            // 히스토리 버튼을 위한 데이터 (ResultPage에서는 보통 표시하지 않음)
+            projectId={projectId}
+            ideaId={ideaId}
+            sourceExperimentId={null}
+            // HistoryList는 과거 기록 보기 모드에서만 표시
+            showHistoryList={!needsSaving}
           />
         ) : originalIdea && (
           <DropItem
@@ -368,6 +446,12 @@ function ResultPage() {
             additiveType={additiveType}
             generation={calculateGeneration(originalIdea)}
             pageType="result"
+            // 히스토리 버튼을 위한 데이터 (ResultPage에서는 보통 표시하지 않음)
+            projectId={projectId}
+            ideaId={ideaId}
+            sourceExperimentId={null}
+            // HistoryList는 과거 기록 보기 모드에서만 표시
+            showHistoryList={!needsSaving}
           />
         )}
 
@@ -375,7 +459,6 @@ function ResultPage() {
           brandColor={location.state?.brandColor}
           experimentResult={gptResponse}
           additiveType={additiveType}
-          additiveIntensity={additiveIntensity}
         />
       </ContentWrap>
 

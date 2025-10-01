@@ -118,7 +118,7 @@ const StepContent = styled.h5`
   margin-bottom: 20px;
 `;
 
-export default function ResultReport({ brandColor, experimentResult, additiveType, additiveIntensity }) {
+export default function ResultReport({ brandColor, experimentResult, additiveType }) {
     const reportRef = useRef();
     const stepRefs = [useRef(), useRef(), useRef(), useRef()];
     const [scrollY, setScrollY] = useState(0);
@@ -141,13 +141,13 @@ export default function ResultReport({ brandColor, experimentResult, additiveTyp
 
     const scrollLineHeight = 100 + scrollY;
 
-    // 슬라이더 값에 따른 첨가제 강도 텍스트
-    const getAdditiveIntensityText = (value) => {
-        if (value === 0) return '적게';
-        if (value === 1) return '적당히';
-        if (value === 2) return '많이';
-        return '적당히'; // 기본값
-    };
+    // 슬라이더 값에 따른 첨가제 강도 텍스트 (현재 사용하지 않음)
+    // const getAdditiveIntensityText = (value) => {
+    //     if (value === 0) return '적게';
+    //     if (value === 1) return '적당히';
+    //     if (value === 2) return '많이';
+    //     return '적당히'; // 기본값
+    // };
 
     // 첨가제 타입을 한국어로 변환
     const getAdditiveTypeKorean = (type) => {
@@ -258,12 +258,16 @@ export default function ResultReport({ brandColor, experimentResult, additiveTyp
                                 <ChipLabel $active={activeStepIndex >= 2} $brandcolor={color}>첨가제 혼합 과정</ChipLabel>
                             </ChipWrap>
                             <StepTextWrap>
-                                <StepTitle>
-                                    {experimentResult.steps[2]?.title || '첨가제 혼합 과정'}
-                                </StepTitle>
+                                {additiveType === 'usability' && (
+                                    <StepTitle>
+                                        {experimentResult.steps[2]?.title || '첨가제 혼합 과정'}
+                                    </StepTitle>
+                                )}
+                               
                                 
                                 {additiveType === 'usability' ? (
                                     // 사용성: descriptions 배열 하드코딩
+                                    
                                     experimentResult.steps[2]?.descriptions?.length > 0 ? (
                                         experimentResult.steps[2].descriptions.map((desc, i) => (
                                             <StepContent key={i}>
