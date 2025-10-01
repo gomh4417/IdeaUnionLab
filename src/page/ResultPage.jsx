@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
-import { generateImprovedProductWithImage } from '../utils/Aiapi';
+import { improveProduct, analyzeImageWithVision } from '../utils/Aiapi';
 import { uploadDataUrl } from '../utils/firebaseStorage';
 import Header from '../jsx/Header';
 import styled from 'styled-components';
@@ -87,15 +87,29 @@ function ResultPage() {
         console.log('- additiveType:', additiveType);
         console.log('- visionAnalysis 존재:', !!visionAnalysis);
         console.log('- originalIdea.imageUrl 존재:', !!originalIdea.imageUrl);
-        console.log('- originalIdea.imageUrl:', originalIdea.imageUrl?.substring(0, 100) + '...');
+        console.log('- originalIdea.imageUrl:', originalIdea.imageUrl);
+        console.log('- originalIdea 전체 데이터 구조:', Object.keys(originalIdea));
         
-        const improved = await generateImprovedProductWithImage(
+        // 이미지 URL이 없는 경우 경고 메시지 표시
+        if (!originalIdea.imageUrl || typeof originalIdea.imageUrl !== 'string' || originalIdea.imageUrl.trim() === '') {
+          console.error('❌ Firebase 데이터에서 imageUrl 찾을 수 없음:', {
+            id: originalIdea.id,
+            title: originalIdea.title,
+            imageUrl: originalIdea.imageUrl,
+            전체데이터: originalIdea
+          });
+          alert(`원본 아이디어 "${originalIdea.title || 'Unknown'}"에 이미지 URL이 없습니다.\nFirebase에서 imageUrl 필드를 확인해주세요.`);
+        }
+        
+        const improved = await improveProduct(
           originalIdea.title,
           originalIdea.description,
           gptResponse.steps,
           additiveType,
           visionAnalysis || '', // Vision API 분석 결과 전달
-          originalIdea.imageUrl // 원본 이미지 URL 전달
+          originalIdea.imageUrl || null, // 원본 이미지 URL 전달 (null 안전 처리)
+          additiveType === 'aesthetics' ? referenceImage : null, // 심미성 첨가제인 경우 레퍼런스 이미지 전달
+          additiveIntensity // 슬라이더 값을 sliderValue로 전달
         );
 
         if (!mounted) return;
@@ -244,6 +258,23 @@ function ResultPage() {
         newIdeaId
       );
 
+      // 5) 생성된 이미지에 대한 Vision API 분석 수행
+      let newVisionAnalysis = null;
+      if (finalGeneratedImageUrl) {
+        try {
+          console.log('🔍 생성된 이미지에 대한 Vision API 분석 시작...');
+          newVisionAnalysis = await analyzeImageWithVision(finalGeneratedImageUrl);
+          console.log('✅ Vision API 분석 완료:', newVisionAnalysis?.substring(0, 100) + '...');
+        } catch (visionError) {
+          console.warn('⚠️ Vision API 분석 실패:', visionError.message);
+          // Vision 분석 실패해도 저장은 계속 진행
+          newVisionAnalysis = `이미지 분석 중 오류가 발생했습니다: ${visionError.message}`;
+        }
+      } else {
+        console.warn('⚠️ 분석할 이미지 URL이 없습니다.');
+        newVisionAnalysis = '이미지 URL이 없어 분석을 수행할 수 없습니다.';
+      }
+
       const tagMap = { creativity: '#창의개선', aesthetics: '#심미개선', usability: '#사용개선' };
       const resultTag = tagMap[additiveType] || '#생성물';
       const nextGeneration = calculateGeneration(originalIdea);
@@ -256,6 +287,7 @@ function ResultPage() {
           gptResponse?.description ||
           originalIdea?.description,
         imageUrl: finalGeneratedImageUrl,     // ✅ URL만 저장
+        visionAnalysis: newVisionAnalysis,     // ✅ Vision API 분석 결과 저장
         tags: [resultTag],
         type: 'generated',
         additiveType,

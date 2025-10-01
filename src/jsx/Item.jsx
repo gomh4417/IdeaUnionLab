@@ -136,6 +136,7 @@ export default function Item({
   // 삭제 버튼 클릭
   const handleDelete = (e) => {
     e.stopPropagation();
+    console.log('삭제 요청:', { idx, itemId: itemData?.id, title });
     onDelete?.(idx);
   };
 

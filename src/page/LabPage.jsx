@@ -8,7 +8,7 @@ import { useState, useEffect } from 'react';
 import Icons from '../jsx/Icons';
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { generateIdeaWithAdditive, analyzeReferenceImage, generateImprovedProductInfo, analyzeImageWithVision, generateProductImageWithStability_I2I } from '../utils/Aiapi';
+import { analyzeIdea, analyzeReferenceImage, improveProductInfo } from '../utils/Aiapi';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
 
 import ActionBtn from '../jsx/ActionBtn';
@@ -97,8 +97,8 @@ function LabPage() {
   // 드롭 상태 관리
   const [dropped, setDropped] = useState(false);
   const [isItemOver, setIsItemOver] = useState(false);
-  const [activatedIdx, setActivatedIdx] = useState(null);
-  const [droppedItemData, setDroppedItemData] = useState(null); // 드롭된 아이템 데이터
+  const [activatedId, setActivatedId] = useState(null);
+  const [selectedItem, setSelectedItem] = useState(null); // 선택된 아이템 데이터
   
   // AdditiveBar 관련 상태
   const [selectedAdditive, setSelectedAdditive] = useState(null);
@@ -107,7 +107,7 @@ function LabPage() {
   const [referenceImage, setReferenceImage] = useState(null); // 레퍼런스 이미지 상태
   
   // 개선된 제품 정보 상태 (GPT 응답 후 업데이트)
-  const [improvedProductInfo, setImprovedProductInfo] = useState(null);
+  const [improvedProduct, setImprovedProduct] = useState(null);
   
   // gif 반복 재생을 위한 key state
   const [gifKey, setGifKey] = useState(Date.now());
@@ -164,15 +164,15 @@ function LabPage() {
     // 드롭 리셋
     setDropped(false);
     setIsItemOver(false);
-    setActivatedIdx(null);
-    setDroppedItemData(null);
+    setActivatedId(null);
+    setSelectedItem(null);
 
     // 첨가제 상태/개선 정보도 리셋
     setSelectedAdditive(null);
     setSliderValue(0);
     setSliderTouched(false);
     setReferenceImage(null);
-    setImprovedProductInfo(null);
+    setImprovedProduct(null);
   };
 
   // 프로젝트 정보 로드 (메모이제이션으로 중복 호출 방지)
@@ -183,9 +183,6 @@ function LabPage() {
       if (!projectId) return;
       
       try {
-        if (import.meta.env.DEV) {
-          console.log('프로젝트 정보 로딩 시작:', projectId);
-        }
         const projectDoc = await getDoc(doc(db, "projects", projectId));
         if (projectDoc.exists() && isMounted) {
           const projectData = projectDoc.data();
@@ -217,11 +214,23 @@ function LabPage() {
         
         ideasSnapshot.forEach((doc) => {
           const ideaData = { id: doc.id, ...doc.data() };
+          
+          // Firebase 데이터 검증
+          if (import.meta.env.DEV) {
+            // 아이디어 로드 (상세 로그는 필요시에만 활성화)
+            if (!ideaData.imageUrl) {
+              console.warn(`⚠️ ${doc.id}에 imageUrl이 없습니다!`);
+            }
+          }
+          
           ideasData.push(ideaData);
         });
         
         if (isMounted) {
           setItems(ideasData);
+          if (import.meta.env.DEV) {
+            console.log(`✅ 총 ${ideasData.length}개 아이디어 로드 완료`);
+          }
         }
       } catch (error) {
         console.error('아이디어 로딩 실패:', error);
@@ -244,12 +253,9 @@ function LabPage() {
     if (preservedItem) {
       // 보존된 아이템으로 드롭 상태 복원
       setDropped(true);
-      setDroppedItemData(preservedItem);
-      // activatedIdx는 아이템 목록에서 찾아서 설정
-      const itemIndex = items.findIndex(item => item.id === preservedItem.id);
-      if (itemIndex !== -1) {
-        setActivatedIdx(itemIndex);
-      }
+      setSelectedItem(preservedItem);
+      // activatedId를 아이템 ID로 설정
+      setActivatedId(preservedItem.id);
       
       // URL state에서 preservedDropItem 제거 (한 번만 처리)
       window.history.replaceState(
@@ -275,33 +281,39 @@ function LabPage() {
     return () => clearInterval(intervalId);
   }, [dropped]);
 
-  // 삭제 핸들러 (ItemList에 전달)
-  const handleDeleteItem = async (idx) => {
-    if (!projectId || !items[idx]) return;
+  // 삭제 핸들러 (ItemList에 전달) - ID 기반으로 수정
+  const handleDeleteItem = async (itemId) => {
+    if (!projectId || !itemId) return;
     
-    const itemToDelete = items[idx];
+    const itemToDelete = items.find(item => item.id === itemId);
+    if (!itemToDelete) {
+      console.error('삭제할 아이템을 찾을 수 없습니다:', itemId);
+      return;
+    }
+    
+    const itemIndex = items.findIndex(item => item.id === itemId);
     
     try {
       // Firebase에서 아이디어 문서 삭제
-      await deleteDoc(doc(db, "projects", projectId, "ideas", itemToDelete.id));
+      await deleteDoc(doc(db, "projects", projectId, "ideas", itemId));
       
       if (import.meta.env.DEV) {
-        console.log('Firebase에서 아이디어 삭제 완료:', itemToDelete.id);
+        console.log('Firebase에서 아이디어 삭제 완료:', itemId);
       }
       
       // 로컬 state에서도 제거
       setItems(prev => {
-        const newArr = prev.filter((_, i) => i !== idx);
+        const newArr = prev.filter(item => item.id !== itemId);
         // 현재 drop된 아이템이 삭제되거나, 모두 삭제되면 dropped 해제
-        if (activatedIdx === idx || newArr.length === 0) {
+        if (activatedId === itemId || newArr.length === 0) {
           setDropped(false);
-          setActivatedIdx(null);
-          setDroppedItemData(null);
+          setActivatedId(null);
+          setSelectedItem(null);
           setSelectedAdditive(null);
           setSliderValue(0);
           setSliderTouched(false);
           setReferenceImage(null);
-          setImprovedProductInfo(null);
+          setImprovedProduct(null);
         }
         return newArr;
       });
@@ -322,26 +334,37 @@ function LabPage() {
         setIsItemOver(true);
       }
     },
-    // drop 시 드롭된 item의 idx를 활성화
+    // drop 시 드롭된 item의 ID를 활성화
     drop: (item) => {
-      const isNewItem = item.idx !== activatedIdx;
+      const isNewItem = item.itemData?.id !== activatedId;
       
       // 새로운 아이템이거나 첫 번째 drop인 경우
       if (!dropped || isNewItem) {
         // 기존 활성화된 아이템이 있다면 비활성화
-        if (activatedIdx !== null) {
+        if (activatedId !== null) {
           // 기존 아이템의 상태를 default로 변경하는 로직은 Sidebar에서 처리됨
         }
         
         setDropped(true);
         setIsItemOver(false);
-        setActivatedIdx(item.idx);
+        setActivatedId(item.itemData?.id || null);
         
-        // 드롭된 아이템 데이터 저장
+        // 선택된 아이템 데이터 저장
         if (item.itemData) {
-          setDroppedItemData(item.itemData);
+          // imageUrl 유효성 검증
+          if (!item.itemData.imageUrl || typeof item.itemData.imageUrl !== 'string' || item.itemData.imageUrl.trim() === '') {
+            console.error('⚠️ Firebase 데이터에서 imageUrl 찾을 수 없음:', {
+              id: item.itemData.id,
+              title: item.itemData.title,
+              imageUrl: item.itemData.imageUrl,
+              전체데이터: item.itemData
+            });
+            alert(`선택한 아이디어 "${item.itemData.title || 'Unknown'}"에 이미지 URL이 없습니다.\nFirebase에서 imageUrl 필드를 확인해주세요.`);
+          }
+          
+          setSelectedItem(item.itemData);
           if (import.meta.env.DEV) {
-            console.log('드롭된 아이템 데이터:', item.itemData);
+            console.log('📋 아이템 드롭:', item.itemData.title, '| ImageURL 유효:', !!(item.itemData.imageUrl && item.itemData.imageUrl.trim()));
           }
         }
         
@@ -350,7 +373,7 @@ function LabPage() {
         setSliderValue(0);
         setSliderTouched(false);
         setReferenceImage(null);
-        setImprovedProductInfo(null);
+        setImprovedProduct(null);
       }
       
       return undefined;
@@ -373,8 +396,8 @@ function LabPage() {
       <ContentWrap>
         <Sidebar
           projects={items}
-          activatedIdx={activatedIdx}
-          setActivatedIdx={setActivatedIdx}
+          activatedId={activatedId}
+          setActivatedId={setActivatedId}
           onDeleteItem={handleDeleteItem}
           projectId={projectId}
           onDragStateChange={setIsDraggingItem} 
@@ -383,14 +406,14 @@ function LabPage() {
         {/* 무대(Container) 위에 DropItem을 깔고, 그 위에 DropOverlay를 올림 */}
         <Stage>
           {/* 드롭된 카드 또는 안내 화면 */}
-          {dropped && droppedItemData ? (
+          {dropped && selectedItem ? (
             <DropItem
-              title={droppedItemData.title}
-              imageUrl={droppedItemData.imageUrl}
-              content={droppedItemData.description}
-              type={droppedItemData.type === 'generated' ? 'result' : 'original'}
-              additiveType={droppedItemData.type === 'generated' ? droppedItemData.additiveType : null}
-              generation={calculateCurrentGeneration(droppedItemData)}
+              title={selectedItem.title}
+              imageUrl={selectedItem.imageUrl}
+              content={selectedItem.description}
+              type={selectedItem.type === 'generated' ? 'result' : 'original'}
+              additiveType={selectedItem.type === 'generated' ? selectedItem.additiveType : null}
+              generation={calculateCurrentGeneration(selectedItem)}
               pageType="lab"
               onClear={handleClearSelection}
               loading={loading}
@@ -454,11 +477,11 @@ function LabPage() {
           iconName="arrow_forward"
           title={loading ? "실험 중..." : "실험하기"}
           onClick={async () => {
-            if (typeof activatedIdx === 'number' && items[activatedIdx] && selectedAdditive && sliderTouched && !loading) {
+            if (activatedId && selectedItem && selectedAdditive && sliderTouched && !loading) {
               try {
                 setLoading(true);
                 
-                const currentIdea = items[activatedIdx];
+                const currentIdea = selectedItem;
                 
                 // 카운터를 사용한 효율적인 실험 ID 생성
                 const { id: experimentId } = await getNextIdWithCounter(
@@ -467,10 +490,7 @@ function LabPage() {
                 );
                 
                 if (import.meta.env.DEV) {
-                  console.log('생성될 실험 ID:', experimentId);
-                  console.log('첨가제 타입:', selectedAdditive);
-                  console.log('레퍼런스 이미지 상태:', referenceImage);
-                  console.log('레퍼런스 이미지 조건 확인:', selectedAdditive === 'aesthetics', !!referenceImage);
+                  console.log('🔬 실험 시작:', experimentId, '| 첨가제:', selectedAdditive, '| 레퍼런스:', !!referenceImage);
                 }
                 
                 // 실험 데이터 구조 (GPT 프롬프트 제거)
@@ -499,12 +519,12 @@ function LabPage() {
                 if (selectedAdditive === 'aesthetics' && referenceImage) {
                   experimentData.referenceImageUrl = referenceImage;
                   if (import.meta.env.DEV) {
-                    console.log('레퍼런스 이미지 추가됨:', referenceImage.substring(0, 50) + '...');
+                    console.log('레퍼런스 이미지 추가 완료');
                   }
                 }
                 
                 if (import.meta.env.DEV) {
-                  console.log('실험 데이터 생성:', experimentData);
+                  // 실험 데이터 생성 완료
                 }
                 
                 // Firebase에 실험 데이터 저장
@@ -520,21 +540,10 @@ function LabPage() {
                     console.log('GPT API 호출 시작...');
                   }
                   
-                  // 현재 드롭된 아이템의 이미지 분석 (Vision API)
-                  let visionAnalysis = null;
-                  if (droppedItemData?.imageUrl) {
-                    if (import.meta.env.DEV) {
-                      console.log('드롭된 아이템 이미지 분석 중:', droppedItemData.imageUrl.substring(0, 100) + '...');
-                    }
-                    try {
-                      visionAnalysis = await analyzeImageWithVision(droppedItemData.imageUrl);
-                      if (import.meta.env.DEV) {
-                        console.log('Vision API 분석 완료:', visionAnalysis?.substring(0, 100) + '...');
-                      }
-                    } catch (visionError) {
-                      console.warn('Vision API 분석 실패:', visionError);
-                      visionAnalysis = '이미지 분석에 실패했습니다.';
-                    }
+                  // 이미 저장된 Vision 분석 결과 사용 (CanvasPage에서 저장됨)
+                  const visionAnalysis = selectedItem?.visionAnalysis || '이미지 분석 결과가 없습니다.';
+                  if (import.meta.env.DEV) {
+                    console.log('저장된 Vision 분석 사용:', visionAnalysis.substring(0, 100) + '...');
                   }
                   
                   let referenceAnalysis = null;
@@ -546,14 +555,14 @@ function LabPage() {
                     referenceAnalysis = await analyzeReferenceImage(referenceImage);
                   }
                   
-                  // GPT API로 아이디어 생성 (드롭된 아이템 정보 사용)
-                  const gptResponse = await generateIdeaWithAdditive(
+                  // GPT API로 아이디어 생성 (저장된 Vision 분석 사용)
+                  const gptResponse = await analyzeIdea(
                     selectedAdditive,
-                    droppedItemData.title,        // 드롭된 아이템의 제목
-                    droppedItemData.description,  // 드롭된 아이템의 설명
-                    visionAnalysis || '이미지 분석 결과가 없습니다.', // 드롭된 아이템의 이미지 분석
-                    referenceAnalysis,
-                    sliderValue // 슬라이더 값 전달
+                    selectedItem.title,        // 선택된 아이템의 제목
+                    selectedItem.description,  // 선택된 아이템의 설명
+                    visionAnalysis,            // 저장된 Vision 분석 결과 사용
+                    referenceAnalysis,         // 레퍼런스 이미지 분석 (심미성만)
+                    sliderValue               // 슬라이더 값
                   );
                   
                   if (import.meta.env.DEV) {
@@ -561,7 +570,7 @@ function LabPage() {
                   }
                   
                   // Step 1-4 인사이트를 바탕으로 개선된 제품 정보 생성
-                  const improvedProductInfo = await generateImprovedProductInfo(
+                  const improvedProduct = await improveProductInfo(
                     currentIdea.title,
                     currentIdea.description,
                     gptResponse.steps || [],
@@ -569,16 +578,16 @@ function LabPage() {
                   );
                   
                   if (import.meta.env.DEV) {
-                    console.log('개선된 제품 정보:', improvedProductInfo);
+                    console.log('개선된 제품 정보:', improvedProduct);
                   }
                   
                   // 개선된 제품 정보를 상태에 저장하여 DropItem에 반영
-                  setImprovedProductInfo(improvedProductInfo);
+                  setImprovedProduct(improvedProduct);
                   
                   // GPT 응답을 결과 형태로 변환
                   const finalGptResponse = {
-                    title: improvedProductInfo.title,
-                    description: improvedProductInfo.description,
+                    title: improvedProduct.title,
+                    description: improvedProduct.description,
                     steps: gptResponse.steps || []
                   };
                   

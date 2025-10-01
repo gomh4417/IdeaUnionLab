@@ -108,7 +108,7 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar({ projects, activatedIdx, setActivatedIdx, onDeleteItem, projectId, onDragStateChange }) {
+export default function Sidebar({ projects, activatedId, setActivatedId, onDeleteItem, projectId, onDragStateChange }) {
   const [active, setActive] = useState('raw');
   const navigate = useNavigate();
   
@@ -123,15 +123,22 @@ export default function Sidebar({ projects, activatedIdx, setActivatedIdx, onDel
     }
   });
   
+  // 개발 환경에서 필터링된 결과 로깅
+  if (import.meta.env.DEV) {
+    console.log(`🔍 Sidebar 필터링 결과 (${active}):`, filteredProjects.map(p => ({ 
+      id: p.id, 
+      title: p.title?.substring(0, 20) + '...' 
+    })));
+  }
+  
   // 현재 활성화된 아이템이 현재 탭에 있는지 확인
-  const activeItemInCurrentTab = activatedIdx !== null && activatedIdx < projects.length ? 
-    filteredProjects.some(item => item.id === projects[activatedIdx]?.id) : false;
+  const activeItemInCurrentTab = activatedId ? 
+    filteredProjects.some(item => item.id === activatedId) : false;
   
   // 필터링된 배열에서 활성화된 아이템의 인덱스 찾기
   const getFilteredActiveIndex = () => {
-    if (!activeItemInCurrentTab || activatedIdx === null) return null;
-    const activeItem = projects[activatedIdx];
-    return filteredProjects.findIndex(item => item.id === activeItem?.id);
+    if (!activeItemInCurrentTab || !activatedId) return null;
+    return filteredProjects.findIndex(item => item.id === activatedId);
   };
   
   return (

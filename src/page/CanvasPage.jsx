@@ -7,7 +7,7 @@ import { getNextIdWithCounter } from '../utils/firebaseCounter';
 import {
   generateProductTag,
   generateRandomIdea,
-  generateImage,
+  generateImageWithStability,
 } from '../utils/Aiapi';
 import { uploadCanvasImage, uploadIflImage } from '../utils/firebaseStorage';
 import styled from 'styled-components';
@@ -254,7 +254,16 @@ function CanvasPage() {
   const stageRef = useRef();
 
   // crossOrigin 'anonymous' 설정
-  const [konvaImage] = useImage(imageUrl || undefined, 'anonymous');
+  const [konvaImage, status] = useImage(imageUrl || undefined, 'anonymous');
+  
+  // 이미지 로딩 상태 모니터링
+  useEffect(() => {
+    if (imageUrl) {
+      console.log('🖼️ 이미지 URL 변경됨:', imageUrl.substring(0, 50) + '...');
+      console.log('🖼️ Konva 이미지 로딩 상태:', status);
+      console.log('🖼️ Konva 이미지 객체:', konvaImage ? '로드됨' : '로드되지 않음');
+    }
+  }, [imageUrl, status, konvaImage]);
 
   /** 외부/로컬 이미지를 data URL로 변환 */
   const toDataUrl = (blob) =>
@@ -352,26 +361,54 @@ function CanvasPage() {
     if (!iflPrompt.trim() || iflLoading) return;
     try {
       setIflLoading(true);
+      console.log('IFL 아이디어 생성 시작:', iflPrompt);
+      
+      // 1단계: GPT로 아이디어 생성
       const ideaData = await generateRandomIdea(iflPrompt);
+      console.log('아이디어 생성 완료:', ideaData.title);
       setTitle(ideaData.title);
       setContent(ideaData.description);
 
-      // DALL·E가 반환하는 외부 URL → fetch 후 data URL로 변환
+      // 2단계: Stability AI로 고품질 제품 렌더링 생성
       try {
-        const url = await generateImage(ideaData.imagePrompt);
+        console.log('🖼️ 제품 렌더링 생성 시작...');
+        console.log('프롬프트:', ideaData.imagePrompt.substring(0, 100) + '...');
+        
+        const url = await generateImageWithStability(ideaData.imagePrompt);
+        console.log('🔍 Stability API 반환값 타입:', typeof url);
+        console.log('🔍 URL 시작 부분:', url ? url.substring(0, 50) + '...' : 'null');
+        
         const dataUrl = url.startsWith('http')
           ? await fetchToDataUrl(url)
           : url;
-        setImageUrl(dataUrl);
+        
+        console.log('🔍 최종 dataUrl 타입:', typeof dataUrl);
+        console.log('🔍 dataUrl 유효성:', dataUrl && dataUrl.length > 100 ? '유효함' : '무효함');
+        
+        // 이미지 유효성 검증
+        if (dataUrl && dataUrl.startsWith('data:image/')) {
+          setImageUrl(dataUrl);
+          console.log('✅ 제품 렌더링 생성 완료, 이미지 URL 설정됨');
+          
+          // Base64 이미지 테스트용 - 브라우저에서 확인 가능
+          const testImg = new Image();
+          testImg.onload = () => console.log('✅ Base64 이미지 로드 성공');
+          testImg.onerror = (err) => console.error('❌ Base64 이미지 로드 실패:', err);
+          testImg.src = dataUrl;
+        } else {
+          console.error('❌ 유효하지 않은 이미지 데이터:', dataUrl?.substring(0, 100));
+        }
       } catch (imgErr) {
-        console.error('IFL 이미지 생성/변환 실패:', imgErr);
+        console.error('❌ 제품 렌더링 생성 실패:', imgErr);
+        console.error('❌ 에러 상세:', imgErr.message);
+        alert(`제품 이미지 생성에 실패했습니다.\n오류: ${imgErr.message}\n\n텍스트 아이디어는 정상적으로 생성되었습니다.`);
       }
 
       setShowIflInput(false);
       setIflPrompt('');
       setActiveTool('pen');
     } catch (e) {
-      console.error('IFL 생성 실패:', e);
+      console.error('❌ IFL 생성 실패:', e);
       alert(`아이디어 생성 중 오류가 발생했습니다: ${e.message}`);
     } finally {
       setIflLoading(false);
@@ -435,9 +472,11 @@ function CanvasPage() {
               >
                 {/* 이미지 레이어 (지우개 영향 X) */}
                 <Layer listening={false}>
-                  {imageUrl && (
+                  {imageUrl && konvaImage ? (
                     <KonvaImage image={konvaImage} x={0} y={0} width={804} height={623} />
-                  )}
+                  ) : imageUrl && !konvaImage ? (
+                    console.log('⚠️ 이미지 URL은 있지만 Konva 이미지가 로드되지 않음') || null
+                  ) : null}
                 </Layer>
 
                 {/* 드로잉 레이어 */}
@@ -572,7 +611,7 @@ function CanvasPage() {
                     type="text"
                     value={iflPrompt}
                     onChange={(e) => setIflPrompt(e.target.value)}
-                    placeholder={iflLoading ? '생성 중...' : '예: 의자 디자인'}
+                    placeholder={iflLoading ? '생성 중...' : '스마트 책상, 마우스'}
                     disabled={iflLoading}
                     autoFocus
                     onBlur={(e) => {
@@ -684,13 +723,27 @@ function CanvasPage() {
                 // 업로드 실패해도 저장은 진행
               }
 
-              // 5) Firestore 저장
+              // 5) Vision API로 이미지 분석 (LabPage에서 사용할 예정)
+              let visionAnalysisResult = null;
+              if (finalImageUrl) {
+                try {
+                  console.log('Vision API로 이미지 분석 중...');
+                  const { analyzeImageWithVision } = await import('../utils/Aiapi');
+                  visionAnalysisResult = await analyzeImageWithVision(finalImageUrl);
+                  console.log('Vision API 분석 완료:', visionAnalysisResult.substring(0, 100) + '...');
+                } catch (visionError) {
+                  console.warn('Vision API 분석 실패:', visionError);
+                  visionAnalysisResult = '이미지 분석에 실패했습니다.';
+                }
+              }
+
+              // 6) Firestore 저장
               const ideaData = {
                 id: ideaId,
                 title: title || '제목 없음',
                 description: content || '설명 없음',
                 imageUrl: finalImageUrl || null,
-                visionAnalysis: null, // Vision API 호출 안함으로 null 저장
+                visionAnalysis: visionAnalysisResult, // Vision API 분석 결과 저장
                 tags: [productTag],
                 type: 'original',
                 createdAt: new Date(),

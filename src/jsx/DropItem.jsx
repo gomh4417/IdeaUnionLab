@@ -145,10 +145,6 @@ const Title = styled.div`
   color: ${({ theme }) => theme.colors.gray[900]};
   margin-bottom: 6px;
   align-self: flex-start;
-  filter: ${({ $loading, $pageType, $blurIntensity }) => 
-    $loading && $pageType === 'result' ? `blur(${$blurIntensity}px)` : 'none'
-  };
-  transition: filter 0.3s ease-in-out;
 `;
 
 const Content = styled.div`
@@ -165,10 +161,6 @@ const Content = styled.div`
   &::-webkit-scrollbar {
     display: none; /* Chrome, Safari, Opera */
   }
-  filter: ${({ $loading, $pageType, $blurIntensity }) => 
-    $loading && $pageType === 'result' ? `blur(${$blurIntensity}px)` : 'none'
-  };
-  transition: filter 0.3s ease-in-out;
 `;
 
 export default function DropItem({ 
@@ -201,23 +193,7 @@ export default function DropItem({
   const subTexts = pageType === 'result' ? resultTexts : labTexts;
   const mainText = pageType === 'result' ? "최종 완성된 이미지를 생성하고 있어요!" : "디자인 실험을 시작했어요!";
   
-  // 6.5초마다 blur 강도 변화
-  const [blurIntensity, setBlurIntensity] = useState(8); // 기본 blur 강도
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
-  
-  useEffect(() => {
-    if (!loading || pageType !== 'result') return;
-    
-    const blurInterval = setInterval(() => {
-      setBlurIntensity(7.6);
-
-      setTimeout(() => {
-        setBlurIntensity(8);
-      }, 500);
-    }, 6500);
-    
-    return () => clearInterval(blurInterval);
-  }, [loading, pageType]);
   
   
   useEffect(() => {
@@ -236,14 +212,21 @@ export default function DropItem({
     brandColor = fn ? fn(theme) : theme.colors.brand[1];
   }
 
+  // 이미지 URL 검증 및 로깅
+  console.log('🎯 DropItem 렌더링 정보:');
+  console.log('  - Title:', title);
+  console.log('  - Content 길이:', content?.length);
+  console.log('  - Type:', type);
+  console.log('  - ImageURL:', imageUrl);
+  console.log('  - ImageURL 유효성:', !!(imageUrl && typeof imageUrl === 'string' && imageUrl.trim()));
   if (imageUrl) {
-    console.log(' DropItem imageUrl 확인:');
-    console.log('  - Title:', title);
-    console.log('  - Type:', type);
-    console.log('  - ImageURL:', imageUrl);
     console.log('  - URL Type:', imageUrl.includes('.firebasestorage.app') ? 'firebasestorage.app' : 
                                   imageUrl.includes('firebasestorage.googleapis.com') ? 'googleapis.com' : 'other');
+  } else {
+    console.warn('⚠️ DropItem에 전달된 imageUrl이 비어있음!');
   }
+  console.log('  - AdditiveType:', additiveType);
+  console.log('  - Generation:', generation);
 
   const isResult = type === 'result';
   const isLabPage = pageType === 'lab';
@@ -264,7 +247,7 @@ export default function DropItem({
         </ChipRow>
       )}
       
-      {imageUrl && (
+      {imageUrl ? (
         <ImgContainer>
           <Image src={imageUrl} alt={title} />
           
@@ -284,7 +267,7 @@ export default function DropItem({
               exit={{ scale: 0, opacity: 0 }}
               transition={
                 loadingExit 
-                  ? { duration: 0.6, ease: "easeInOut" }  // Exit 애니메이션
+                  ? { duration: 0.2, ease: "easeInOut" }  // Exit 애니메이션
                   : pageType === 'result'
                     ? { duration: 0 }                     // ResultPage: 즉시
                     : {                                   // LabPage: spring
@@ -322,7 +305,7 @@ export default function DropItem({
             </LoadingOverlay>
           )}
         </ImgContainer>
-      )}
+      ) : null}
 
       {/* LabPage: 생성물이고 additiveType이 있고 generation이 1 이상인 경우 Title 위에 chip 표시 */}
       {isLabPage && isResult && additiveType && generation >= 1 && (
@@ -334,8 +317,8 @@ export default function DropItem({
         </ChipRow>
       )}
       
-      <Title $loading={loading} $pageType={pageType} $blurIntensity={blurIntensity}>{title}</Title>
-      <Content $loading={loading} $pageType={pageType} $blurIntensity={blurIntensity}>{content}</Content>
+      <Title>{title}</Title>
+      <Content>{content}</Content>
     </Container>
   );
 }

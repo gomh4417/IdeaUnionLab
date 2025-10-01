@@ -6,11 +6,11 @@ const API_URL = "https://api.openai.com/v1/chat/completions";
 const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY;
 const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/ultra";
 
-// 개발 환경에서 프록시 사용 여부 (CORS 우회용)
-const USE_PROXY = import.meta.env.DEV; // 개발 모드에서만 프록시 사용
-const PROXY_FIREBASE_STORAGE = "/firebase-storage";
-const PROXY_FIREBASE_STORAGE_NEW = "/firebase-storage-new";
-const PROXY_STABILITY_API = "/stability-api/v2beta/stable-image/generate/ultra";
+// Gemini API 설정
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+const GEMINI_MODEL = "gemini-2.5-flash-image-preview"; // 이미지 입력/출력 지원 모델
+
+
 
 // =============================================================================
 
@@ -44,38 +44,23 @@ Description: {DESCRIPTION}
 {REFERENCE_IMAGE_INFO}
 
 ### Stability AI Ultra Model Prompt Requirements:
-1. PHOTOREALISTIC RENDERING - ultra-realistic commercial-grade product visualization
-2. COMPLETE PRODUCT VISIBILITY - entire product must be fully visible within frame  
-3. Proper framing with adequate space around product (not cropped or cut off)
-4. Single product focus - no multiple items or distracting elements
-5. Professional studio product photography with advanced lighting setup
-6. Clean white background or subtle professional gradient
-7. Premium materials and finishes with realistic textures and reflections
-8. Perfect lighting that shows all product details without harsh shadows
-9. Ultra-modern, premium aesthetic suitable for high-end commercial use
-10. Ultra-sharp focus and 8K resolution quality appearance
-10. Full product view from optimal angle
-11. MAINTAIN ORIGINAL PRODUCT TYPE - if input shows a vacuum cleaner, output must be a vacuum cleaner
+1. High-quality product visualization with realistic materials and textures
+2. Complete product visibility - entire product should be visible within frame  
+3. Professional product photography with good lighting
+4. Clean background (white or subtle gradient)
+5. Single product focus - avoid multiple items or distracting elements
+6. Sharp focus and clear details
+7. Full product view from optimal angle
 
 Create a detailed English prompt (max 120 words) optimized for Ultra model that describes:
-- The EXACT product type mentioned in the title and description
+- The product type mentioned in the title and description
 - Key features and improvements described in the product description  
-- Premium materials, textures, and finishes appropriate for this specific product
-- Professional studio photography setup with advanced lighting
-- Ultra-clean background and perfect framing
-- PRODUCT TYPE CONSISTENCY - ensure the generated image matches the original product category
-- Commercial-grade photorealistic quality
+- Appropriate materials, textures, and finishes for this specific product
+- Professional photography setup
+- Clean background and proper framing
+- High-quality appearance
 
-CRITICAL INSTRUCTIONS FOR ULTRA MODEL:
-1. Focus PRIMARILY on the product title and description - this is the main product to generate
-2. Do NOT generate random products - stick to what's described in the title/description
-3. Always include keywords like "photorealistic", "commercial grade", "ultra-sharp", "professional studio"
-4. If the vision analysis mentions different objects, ignore them and focus on the title/description
-5. PRESERVE PRODUCT TYPE - if original is a cleaning device, ensure output is also a cleaning device
-6. Add specific product type keywords to reinforce consistency (e.g., "vacuum cleaner", "cleaning appliance")
-7. Include premium quality descriptors: "ultra-realistic", "high-end", "premium finish"
-
-Focus on creating a prompt that will produce the EXACT product described in the title and description, with photorealistic commercial quality and complete visibility.
+Focus on creating a prompt that will produce the product described in the title and description with good quality and complete visibility.
 
 Output only the optimized English prompt:`;
 
@@ -141,6 +126,66 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
 // GPT-4o API 헬퍼 함수들
 // =============================================================================
 
+
+
+/**
+ * 한글 텍스트를 영어로 번역하는 함수
+ * @param {string} koreanText - 번역할 한글 텍스트
+ * @returns {Promise<string>} 번역된 영어 텍스트
+ */
+async function translateToEnglish(koreanText) {
+  if (!koreanText || typeof koreanText !== 'string') {
+    return koreanText || '';
+  }
+  
+  // 영어가 대부분인 경우 번역 스킵
+  const koreanCharCount = (koreanText.match(/[\u3131-\uD79D]/g) || []).length;
+  const totalCharCount = koreanText.length;
+  
+  if (koreanCharCount / totalCharCount < 0.3) {
+    console.log('한글 비율이 낮아 번역 스킵:', koreanText.substring(0, 50) + '...');
+    return koreanText;
+  }
+  
+  try {
+    const translatePrompt = `Translate the following Korean text to English naturally and accurately. Keep the meaning and tone intact. Only output the translated English text without any additional explanations or formatting.\n\nKorean text: "${koreanText}"`;
+    
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a professional translator. Translate Korean to English accurately and naturally." },
+          { role: "user", content: translatePrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 2000
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`번역 API 오류: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const translatedText = data.choices?.[0]?.message?.content?.trim() || koreanText;
+    
+    console.log('번역 완료:');
+    console.log('- 원본:', koreanText.substring(0, 50) + '...');
+    console.log('- 번역:', translatedText.substring(0, 50) + '...');
+    
+    return translatedText;
+    
+  } catch (error) {
+    console.warn('번역 실패, 원본 텍스트 사용:', error.message);
+    return koreanText;
+  }
+}
+
 /**
  * GPT-4o API로 텍스트 생성 (JSON 강제)
  * @param {string} prompt - 프롬프트 텍스트
@@ -151,6 +196,8 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
  */
 async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxTokens = 2048) {
   try {
+    console.log('GPT-4o API 호출 시작');
+    console.log('GPT 프롬프트 (처음 200자):', prompt.substring(0, 200) + '...');
     console.log('GPT-4o Text API 호출 시작');
     
     if (!API_KEY) {
@@ -199,7 +246,9 @@ async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxToken
     }
 
     const responseText = data.choices[0].message.content;
-    console.log('GPT-4o Text API 응답 완료');
+    console.log('✅ GPT-4o Text API 응답 완료');
+    console.log('📤 GPT 응답 (처음 500자):', responseText.substring(0, 500) + '...');
+    console.log('📊 GPT 응답 전체 길이:', responseText.length);
     
     return responseText;
     
@@ -218,6 +267,8 @@ async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxToken
 async function callGPTVisionAPI(imageUrl, prompt) {
   try {
     console.log('GPT-4o Vision API 호출 시작');
+    console.log('이미지 URL 타입:', imageUrl.startsWith('data:') ? 'data URL' : 'HTTP URL');
+    console.log('Vision 프롬프트 (처음 200자):', prompt.substring(0, 200) + '...');
     
     if (!API_KEY) {
       throw new Error('OpenAI API 키가 설정되지 않았습니다.');
@@ -262,6 +313,8 @@ async function callGPTVisionAPI(imageUrl, prompt) {
 
     const responseText = data.choices[0].message.content;
     console.log('GPT-4o Vision API 응답 완료');
+    console.log('Vision 응답 (처음 300자):', responseText.substring(0, 300) + '...');
+    console.log('Vision 응답 전체 길이:', responseText.length);
     
     return responseText;
     
@@ -271,7 +324,210 @@ async function callGPTVisionAPI(imageUrl, prompt) {
   }
 }
 
+/**
+ * URL을 Base64로 변환하는 헬퍼 함수 (Gemini API용)
+ * @param {string} url - 이미지 URL
+ * @returns {Promise<{base64: string, mime: string}>} Base64 데이터와 MIME 타입
+ */
+async function urlToBase64(url) {
+  try {
+    const res = await fetch(url, { mode: "cors" });
+    if (!res.ok) throw new Error(`입력 이미지 가져오기 실패: ${res.status}`);
+    const blob = await res.blob();
+    const ab = await blob.arrayBuffer();
+
+    // base64 변환
+    let binary = "";
+    const bytes = new Uint8Array(ab);
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return {
+      base64: btoa(binary),
+      mime: blob.type || "image/png",
+    };
+  } catch (error) {
+    console.error('URL to Base64 변환 실패:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Gemini API 호출 (이미지 + 텍스트)
+ * @param {string} prompt - 프롬프트 텍스트
+ * @param {string} imageUrl - 이미지 URL (base64 data URL 또는 일반 URL)
+ * @param {number} temperature - 온도 (0.0-2.0)
+ * @returns {Promise<{text: string, imageUrl?: string}>} 생성된 텍스트와 이미지 (있는 경우)
+ */
+async function callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
+  try {
+    console.log('Gemini Vision API 호출 시작');
+    console.log('이미지 URL 타입:', imageUrl.startsWith('data:') ? 'data URL' : 'HTTP URL');
+    console.log('Gemini Vision 프롬프트 (처음 200자):', prompt.substring(0, 200) + '...');
+    console.log('Gemini Temperature:', temperature);
+    
+    if (!GEMINI_API_KEY) {
+      throw new Error('Gemini API 키가 설정되지 않았습니다.');
+    }
+
+    // 이미지를 base64로 변환
+    let base64Data, mimeType;
+    
+    if (imageUrl.startsWith('data:')) {
+      // 이미 base64 data URL인 경우
+      const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) throw new Error('잘못된 data URL 형식입니다.');
+      mimeType = matches[1];
+      base64Data = matches[2];
+    } else {
+      // 일반 URL인 경우 변환
+      const { base64, mime } = await urlToBase64(imageUrl);
+      base64Data = base64;
+      mimeType = mime;
+    }
+
+    const body = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            {
+              inline_data: {
+                mime_type: mimeType,
+                data: base64Data
+              }
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: temperature,
+        maxOutputTokens: 8192,
+      }
+    };
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(body)
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Gemini API 오류: ${response.status} - ${errorData.error?.message || '알 수 없는 오류'}`);
+    }
+
+    const data = await response.json();
+    const parts = data?.candidates?.[0]?.content?.parts || [];
+
+    // 결과 파싱
+    let resultText = '';
+    let resultImageUrl = '';
+
+    for (const part of parts) {
+      if (part.text) {
+        resultText = part.text;
+      }
+      if (part.inlineData) {
+        const outMime = part.inlineData.mimeType || "image/png";
+        resultImageUrl = `data:${outMime};base64,${part.inlineData.data}`;
+      }
+    }
+
+    console.log('Gemini Vision API 응답 완료');
+    console.log('Gemini Vision 텍스트 응답 (처음 500자):', resultText.substring(0, 500) + '...');
+    console.log('Gemini Vision 텍스트 응답 전체 길이:', resultText.length);
+    console.log('Gemini Vision 이미지 생성 여부:', !!resultImageUrl);
+    if (resultImageUrl) {
+      console.log('생성된 이미지 크기:', Math.round(resultImageUrl.length / 1024) + 'KB');
+    }
+
+    return {
+      text: resultText,
+      imageUrl: resultImageUrl || undefined
+    };
+  } catch (error) {
+    console.error('Gemini Vision API 호출 실패:', error);
+    throw error;
+  }
+}
+
 // =============================================================================
+
+// 첨가제 타입을 한국어로 변환하는 함수
+const getAdditiveTypeName = (additiveType) => {
+  const typeNames = {
+    creativity: '창의성',
+    aesthetics: '심미성', 
+    usability: '사용성'
+  };
+  return typeNames[additiveType] || '기본';
+};
+
+/**
+ * Gemini API용 프롬프트를 영어로 번역하는 함수
+ * @param {string} koreanPrompt - 번역할 한국어 프롬프트
+ * @returns {Promise<string>} 번역된 영어 프롬프트
+ */
+async function translateGeminiPrompt(koreanPrompt) {
+  if (!koreanPrompt || typeof koreanPrompt !== 'string') {
+    return koreanPrompt || '';
+  }
+  
+  // 영어가 대부분인 경우 번역 스킵
+  const koreanCharCount = (koreanPrompt.match(/[\u3131-\uD79D]/g) || []).length;
+  const totalCharCount = koreanPrompt.length;
+  
+  if (koreanCharCount / totalCharCount < 0.3) {
+    console.log('이미 영어가 많아 번역 스킵:', koreanPrompt.substring(0, 50) + '...');
+    return koreanPrompt;
+  }
+  
+  try {
+    const translatePrompt = `한국어인 이미지 생성 프롬프트를 영어로 자연스럽게 번역해주세요. 최대한 잘못된 번역이 없도록 번역하세요. 번역된 영어 텍스트만 출력하고 추가 설명은 하지 마세요.\n\n한국어 프롬프트: "${koreanPrompt}"`;
+    
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "당신은 전문 번역가입니다. 이미지 생성 프롬프트를 한국어에서 영어로 정확하고 자연스럽게 번역하세요." },
+          { role: "user", content: translatePrompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 1000
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Gemini 프롬프트 번역 API 오류: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const translatedPrompt = data.choices?.[0]?.message?.content?.trim() || koreanPrompt;
+    
+    console.log('한→영 Gemini 프롬프트 번역 완료:');
+    console.log('- 원본:', koreanPrompt.substring(0, 50) + '...');
+    console.log('- 번역:', translatedPrompt.substring(0, 50) + '...');
+    
+    return translatedPrompt;
+    
+  } catch (error) {
+    console.warn('Gemini 프롬프트 번역 실패, 원본 텍스트 사용:', error.message);
+    return koreanPrompt;
+  }
+}
 
 // 슬라이더 값을 Temperature로 변환
 const getTemperatureFromSlider = (sliderValue) => {
@@ -283,324 +539,33 @@ const getTemperatureFromSlider = (sliderValue) => {
   return temperatureMap[sliderValue] || 0.7;
 };
 
-// 방어적 JSON 파싱 함수
-const parseJsonSafely = (responseText) => {
-  // 1단계: 기본 정제
-  let cleanedText = responseText.trim();
-  
-  // 코드블록 제거
-  if (cleanedText.startsWith('```json')) {
-    cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-  } else if (cleanedText.startsWith('```')) {
-    cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-  }
-  
-  // 2단계: 첫 번째 {부터 올바른 괄호 매칭으로 닫히는 }까지 추출
-  const firstBraceIndex = cleanedText.indexOf('{');
-  if (firstBraceIndex === -1) {
-    throw new Error('JSON 시작 지점을 찾을 수 없습니다');
-  }
-  
-  let braceCount = 0;
-  let endIndex = -1;
-  
-  for (let i = firstBraceIndex; i < cleanedText.length; i++) {
-    if (cleanedText[i] === '{') {
-      braceCount++;
-    } else if (cleanedText[i] === '}') {
-      braceCount--;
-      if (braceCount === 0) {
-        endIndex = i;
-        break;
-      }
-    }
-  }
-  
-  if (endIndex === -1) {
-    throw new Error('JSON 끝 지점을 찾을 수 없습니다');
-  }
-  
-  const jsonText = cleanedText.substring(firstBraceIndex, endIndex + 1);
-  
-  // 3단계: 1차 파싱 시도
-  try {
-    return JSON.parse(jsonText);
-  } catch {
-    // 4단계: 일반적인 오류 수정 후 재시도
-    let fixedJson = jsonText;
-    
-    // 후행 쉼표 제거
-    fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
-    
-    // 마지막 } 누락 시 추가
-    if (!fixedJson.trim().endsWith('}') && fixedJson.includes('"steps"')) {
-      fixedJson = fixedJson.trim() + '}';
-    }
-    
-    return JSON.parse(fixedJson);
-  }
-};
-
-// 구조 검증 및 보정 함수
-const validateAndFixStructure = (result, additiveType) => {
-  // 기본 구조 검증
-  if (!result.steps || !Array.isArray(result.steps)) {
-    throw new Error('steps 배열이 없습니다');
-  }
-  
-  // 4개 step 보장
-  while (result.steps.length < 4) {
-    const stepNumber = result.steps.length + 1;
-    result.steps.push({
-      stepNumber,
-      title: `Step ${stepNumber} 분석`,
-      description: `Step ${stepNumber}에 대한 분석 내용입니다.`
-    });
-  }
-  
-  // 각 step 검증 및 보정
-  for (let i = 0; i < 4; i++) {
-    const step = result.steps[i];
-    
-    // 기본 필드 보정
-    if (!step.stepNumber) step.stepNumber = i + 1;
-    if (!step.title) step.title = `Step ${i + 1} 분석이에요`;
-    
-    // Step 3 특별 처리
-    if (step.stepNumber === 3) {
-      if (additiveType === 'usability') {
-        // 사용성: descriptions 배열 5개 보장
-        if (!step.descriptions || !Array.isArray(step.descriptions) || step.descriptions.length !== 5) {
-          step.descriptions = [
-            "1단계: 사용자가 제품에 처음 접근할 때의 문제점이 있어요.",
-            "2단계: 주요 기능 사용 과정에서 불편함이 있어요.",
-            "3단계: 사용 중 발생하는 혼란이 있어요.",
-            "4단계: 사용 후 정리나 보관 과정에 문제가 있어요.",
-            "5단계: 전체적인 사용자 경험에 문제가 있어요."
-          ];
-        }
-      } else {
-        // 창의성, 심미성: subSteps 배열 3개 보장
-        if (!step.subSteps || !Array.isArray(step.subSteps) || step.subSteps.length !== 3) {
-          step.subSteps = [
-            { title: "1차 분석: 기본 구조 문제", description: "기존 아이디어의 기본 구조나 형태에 문제가 있어요." },
-            { title: "2차 분석: 기능 요소 문제", description: "새로운 기능이나 사용성에 문제가 있어요." },
-            { title: "3차 분석: 통합 최적화 문제", description: "모든 요소의 통합과 최적화에 문제가 있어요." }
-          ];
-        }
-      }
-    } else {
-      // Step 1, 2, 4: description 필수
-      if (!step.description) {
-        const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
-        step.description = `${typeNames[additiveType] || '분석'} 관점에서 아이디어를 분석하고 개선 방향을 제시해요.`;
-      }
-    }
-  }
-  
-  return result;
-};
-
-// Fallback 구조 생성 함수
-const getFallbackStructure = (additiveType) => {
-  const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
-  const typeName = typeNames[additiveType] || '분석';
-  
-  return {
-    steps: [
-      {
-        stepNumber: 1,
-        title: "아이디어 분석 중 오류가 발생했어요",
-        description: "AI 분석 중 일시적인 오류가 발생했어요. 다시 시도해주세요."
-      },
-      {
-        stepNumber: 2,
-        title: `${typeName} 첨가제를 적용할 예정이에요`,
-        description: "첨가제 적용을 위한 분석이 진행돼요."
-      },
-      {
-        stepNumber: 3,
-        title: "적용 과정을 분석하고 있어요",
-        ...(additiveType === 'usability' ? {
-          descriptions: [
-            "1단계: 기본 사용성 개선이 필요해요",
-            "2단계: 인터페이스 최적화가 필요해요", 
-            "3단계: 사용자 경험 향상이 필요해요",
-            "4단계: 접근성 개선이 필요해요",
-            "5단계: 전체 통합이 필요해요"
-          ]
-        } : {
-          subSteps: [
-            { title: "1차 분석: 기본 구조 문제", description: "기존 아이디어의 기본 구조나 형태에 문제가 있어요." },
-            { title: "2차 분석: 기능 요소 문제", description: "새로운 기능이나 사용성에 문제가 있어요." },
-            { title: "3차 분석: 통합 최적화 문제", description: "모든 요소의 통합과 최적화에 문제가 있어요." }
-          ]
-        })
-      },
-      {
-        stepNumber: 4,
-        title: "최종적으로 인사이트를 도출했어요!",
-        description: "분석을 통해 발견된 개선 방향을 제시해요."
-      }
-    ]
+// 슬라이더 값을 이미지 변형 강도(strength)로 변환
+// 0: 조금 (0.3 - 원본 이미지 보존), 1: 적당히 (0.6), 2: 많이 (0.9 - 과감한 변화)
+const getStrengthFromSlider = (sliderValue) => {
+  const strengthMap = {
+    0: 0.3,  // 조금 - 원본 이미지 최대한 보존
+    1: 0.6,  // 적당히 - 적당한 변화
+    2: 0.9   // 많이 - 과감한 변화
   };
+  return strengthMap[sliderValue] || 0.6;
 };
 
-// =============================================================================
-// 첨가제별 프롬프트 템플릿 (간소화)
-// =============================================================================
-const ADDITIVE_PROMPTS = {
-  creativity: (ideaTitle, ideaDescription, visionResult) => `역할: 당신은 제품 디자인 및 TRIZ 전문가입니다. 아래 스키마를 만족하는 JSON 객체만 반환하세요.
-
-[입력]
-- 아이디어
-  - 제목: ${ideaTitle}
-  - 설명: ${ideaDescription}
-- 이미지 분석: ${visionResult.split('\n').slice(0, 5).join('\n')}
-
-[스키마]
-{
-  "steps": [
-    { "stepNumber": 1, "title": string, "description": string },
-    { "stepNumber": 2, "title": string, "description": string },
-    { "stepNumber": 3, "title": string, "subSteps": [
-        { "title": string, "description": string },
-        { "title": string, "description": string },
-        { "title": string, "description": string }
-      ]
-    },
-    { "stepNumber": 4, "title": string, "description": string }
-  ]
-}
-
-[요구사항]
-- Step1: title에 "${ideaTitle}은 OOO 문제점을 가지고 있었어요!" 형식으로 문제점 요약, description에 현재 아이디어의 핵심 특징과 한계점 분석 (4-5문장, ~해요/~이에요 말투)
-- Step2: title에 "TRIZ 창의성 원리를 적용할 예정이에요", description에 적용할 TRIZ 원리 1-2개 선정과 이유 (3-4문장, ~해요/~이에요 말투)  
-- Step3: title에 "TRIZ 원리 중 OOO 원리에 문제가 있었어요" 형식으로 문제 원리 요약, subSteps에 실제 TRIZ 원리 분석 과정 3단계 (각 subStep당 2-3문장, ~해요/~이에요 말투)
-- Step4: title에 "최종적으로 인사이트를 도출했어요!", description에 Step1-3 종합한 인사이트와 향후 개선 방향 (4-5문장, ~해요/~이에요 말투)
-- 모든 문장 끝 친근한 말투 사용, JSON 외 텍스트 절대 금지`,
-
-// 심미성 첨가제 프롬프트 (간소화)
-  aesthetics: (ideaTitle, ideaDescription, visionResult, referenceResult) => `역할: 당신은 제품 디자인 및 심미성 분석 전문가입니다. 아래 스키마를 만족하는 JSON 객체만 반환하세요.
-
-[입력]
-- 아이디어
-  - 제목: ${ideaTitle}
-  - 설명: ${ideaDescription}
-- 이미지 분석: ${visionResult.split('\n').slice(0, 5).join('\n')}
-- 레퍼런스 분석: ${referenceResult.split('\n').slice(0, 5).join('\n')}
-
-[스키마]
-{
-  "steps": [
-    { "stepNumber": 1, "title": string, "description": string },
-    { "stepNumber": 2, "title": string, "description": string },
-    { "stepNumber": 3, "title": string, "subSteps": [
-        { "title": string, "description": string },
-        { "title": string, "description": string },
-        { "title": string, "description": string }
-      ]
-    },
-    { "stepNumber": 4, "title": string, "description": string }
-  ]
-}
-
-[요구사항]
-- Step1: title에 "${ideaTitle}은 OOO 심미적 문제를 가지고 있었어요!" 형식으로 디자인 문제점 요약, description에 시각적 특징과 심미적 장단점 분석 (4-5문장, ~해요/~이에요 말투)
-- Step2: title에 "스키마 기반 심미성 원리를 적용할 예정이에요", description에 레퍼런스 기반 심미성 개선 계획 (3-4문장, ~해요/~이에요 말투)
-- Step3: title에 "스키마 원리 중 OOO 부분에 문제가 있었어요" 형식으로 심미적 문제 원리 요약, subSteps에 실제 심미성 분석 과정 3단계 (각 subStep당 2-3문장, ~해요/~이에요 말투)
-- Step4: title에 "최종적으로 인사이트를 도출했어요!", description에 Step1-3 종합한 디자인 인사이트와 심미적 개선 방향 (4-5문장, ~해요/~이에요 말투)
-- 모든 문장 끝 친근한 말투 사용, JSON 외 텍스트 절대 금지`,
-
-// 사용성 첨가제 프롬프트 (간소화)
-  usability: (ideaTitle, ideaDescription, visionResult) => `역할: 당신은 제품 디자인 및 사용성 분석 전문가입니다. 아래 스키마를 만족하는 JSON 객체만 반환하세요.
-
-[입력]
-- 아이디어
-  - 제목: ${ideaTitle}
-  - 설명: ${ideaDescription}
-- 이미지 분석: ${visionResult.split('\n').slice(0, 5).join('\n')}
-
-[스키마]
-{
-  "steps": [
-    { "stepNumber": 1, "title": string, "description": string },
-    { "stepNumber": 2, "title": string, "description": string },
-    { "stepNumber": 3, "title": string, "descriptions": [string, string, string, string, string] },
-    { "stepNumber": 4, "title": string, "description": string }
-  ]
-}
-
-[요구사항]
-- Step1: title에 "${ideaTitle}은 OOO 사용성 문제를 가지고 있었어요!" 형식으로 사용성 문제점 요약, description에 사용성 장점과 문제점 분석 (4-5문장, ~해요/~이에요 말투)
-- Step2: title에 "Task Analysis 사용성 원리를 적용할 예정이에요", description에 과제 분석법 기반 문제점 식별 과정 (3-4문장, ~해요/~이에요 말투)
-- Step3: title에 "Task Analysis 중 OOO 단계에 문제가 있었어요" 형식으로 사용성 문제 단계 요약, descriptions 배열에 5단계 사용자 행동별 문제 분석 (각 단계별 2-3문장, ~해요/~이에요 말투)
-- Step4: title에 "최종적으로 인사이트를 도출했어요!", description에 Step1-3 종합한 사용성 인사이트와 UX 개선 방향 (4-5문장, ~해요/~이에요 말투)
-- 모든 문장 끝 친근한 말투 사용, JSON 외 텍스트 절대 금지`
+// strength 값을 설명 텍스트로 변환 (Gemini API 프롬프트용)
+const getStrengthDescription = (strength) => {
+  if (strength <= 0.4) {
+    return "원본 이미지의 구조와 색상을 최대한 보존하면서 아주 미세한 변화만 적용하세요. 기존 이미지를 90% 이상 유지하고 극히 미묘한 개선만 하세요.";
+  } else if (strength <= 0.7) {
+    return "원본 이미지의 주요 특징을 유지하면서 적당한 수준의 변화를 적용하세요. 기존 이미지를 70-80% 유지하면서 눈에 띄는 개선을 하세요.";
+  } else {
+    return "원본 이미지를 참고하되 과감하고 창의적인 변화를 적용하세요. 기존 이미지를 50-60% 수준으로만 유지하고 dramatic한 개선을 하세요.";
+  }
 };
 
-// =============================================================================
-// API 함수 1: Vision API - 이미지 분석 (GPT-4o 사용)
-// =============================================================================
-export async function analyzeImageWithVision(imageUrl) {
-    try {
-        console.log('GPT-4o Vision API 호출 시작:', imageUrl.substring(0, 50) + '...');
-        
-        // GPT-4o Vision API 사용
-        const analysisResult = await callGPTVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
-        
-        console.log('GPT-4o Vision API 응답 완료');
-        console.log('Vision 분석 결과:', analysisResult.substring(0, 100) + '...');
-        return analysisResult;
-        
-    } catch (error) {
-        console.error('❌ GPT-4o Vision API 호출 실패:', error);
-        throw error;
-    }
-}
-
-// 아이디어 분석 (텍스트 처리) - GPT-4o 사용
-export async function generateIdeaWithAdditive(additiveType, ideaTitle, ideaDescription, visionResult, referenceResult = null, sliderValue = 1) {
-    try {
-        console.log('GPT-4o 아이디어 생성 API 호출 시작:', additiveType, '슬라이더 값:', sliderValue);
-        
-        let prompt;
-        if (additiveType === 'aesthetics' && referenceResult) {
-            prompt = ADDITIVE_PROMPTS.aesthetics(ideaTitle, ideaDescription, visionResult, referenceResult);
-        } else {
-            prompt = ADDITIVE_PROMPTS[additiveType](ideaTitle, ideaDescription, visionResult);
-        }
-
-        // 슬라이더 값을 Temperature로 변환 (안정성을 위해 상한 제한)
-        const rawTemperature = getTemperatureFromSlider(sliderValue);
-        const temperature = Math.min(rawTemperature, 0.4); // 형식 안정성을 위해 0.4로 캡
-        console.log('Temperature 설정:', temperature, '(원본:', rawTemperature, ')');
-
-        // GPT-4o API 사용 (JSON 강제)
-        const responseText = await callGPTTextAPI(prompt, true, temperature, 1800);
-        
-        console.log('원본 응답 길이:', responseText.length);
-        
-        // 방어적 JSON 파싱
-        const result = parseJsonSafely(responseText);
-        
-        console.log('JSON 파싱 성공, 구조 검증 시작...');
-        
-        // 구조 검증 및 보정
-        const validatedResult = validateAndFixStructure(result, additiveType);
-        
-        console.log('구조 검증 및 보정 완료');
-        return validatedResult;
-        
-    } catch (error) {
-        console.error('아이디어 생성 API 호출 실패:', error);
-        
-        // 최종 실패 시 기본 구조 반환
-        return getFallbackStructure(additiveType);
-    }
-}
-
-// 레퍼런스 이미지 분석 (심미성 첨가제용 vision API) - GPT-4o 사용
+/**
+ * 레퍼런스 이미지 분석 함수 (심미성 첨가제용)
+ * @param {string} imageUrl - 레퍼런스 이미지 URL
+ * @returns {Promise<string>} 분석 결과
+ */
 export async function analyzeReferenceImage(imageUrl) {
   try {
     console.log('GPT-4o 레퍼런스 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
@@ -614,483 +579,1426 @@ export async function analyzeReferenceImage(imageUrl) {
     
   } catch (error) {
     console.error('레퍼런스 이미지 분석 실패:', error);
-    throw error;
+    return '레퍼런스 이미지 분석을 수행할 수 없습니다.';
   }
 }
 
-// Vision 분석 결과와 제목, 내용을 바탕으로 제품 태그 생성 - GPT-4o 사용
-export async function generateProductTag(visionAnalysis, title = '', description = '') {
+/**
+ * OpenAI Vision API를 사용하여 이미지를 분석하는 함수
+ * @param {string} imageUrl - 분석할 이미지 URL (base64 data URL 형태)
+ * @returns {Promise<string>} 이미지 분석 결과 텍스트
+ */
+export async function analyzeImageWithVision(imageUrl) {
   try {
-    console.log('GPT-4o 제품 카테고리 분석 중...', { title, description, visionAnalysis });
+    console.log('Vision API 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
     
-    const tagPrompt = `당신은 제품 카테고리 분석 전문가입니다. 
-주어진 정보를 종합적으로 분석하여 적절한 카테고리 태그를 생성하세요.
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: VISION_ANALYSIS_PROMPT
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageUrl
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 1000,
+        temperature: 0.7
+      })
+    });
 
-### 제품 정보
-제목: ${title || '제목 없음'}
-설명: ${description || '설명 없음'}
-
-### 이미지 분석 결과
-${visionAnalysis || '이미지 분석 없음'}
-
-### 태그 생성 과정
-1. 제목과 설명에서 제품의 주요 기능과 용도를 파악하세요
-2. 이미지 분석 결과에서 시각적 특성을 고려하세요
-3. 제품이 사용되는 장소나 상황을 추론하세요  
-4. 제품의 크기, 형태적 특성을 반영하세요
-5. 사용자층이나 전문성을 고려하세요
-
-### 태그 생성 규칙
-- 정확히 4-5글자의 한글 태그를 생성
-- "용도+영역" 또는 "특성+분야" 조합으로 구성
-- 좋은 예시: "가전제품", "주방제품", "사무도구", "운동기구", "의료장비", "전자기기", "생활가전", "인테리어", "조명기구", "건강관리", "자동차용품", "반려동물용품", "교육기자재", "음향장비", "컴퓨터부품", "스마트기기", "미용도구", "요리도구", "세탁용품", "정리용품", "안전장비", "측정기구", "수리도구", "가구류", "문구류", "게임기기", "운송기구", "청소용품", "장난감", "악기류"
-- 피해야 할 예시: "의자", "컵", "펜" 등 단일 제품명
-- 제품 정보에 적합한 태그를 생성하세요
-- 태그 앞에 #을 붙여서 출력
-- 다른 설명 없이 태그만 출력
-- 태그는 1개만 출력
-
-태그:`;
-
-    // GPT-4o API 사용
-    const response = await callGPTTextAPI(tagPrompt, false, 0.2, 30);
-    let tag = response.trim();
-    
-    // 불필요한 텍스트 제거
-    tag = tag.replace(/^태그:\s*/, '').replace(/^\s*출력:\s*/, '').replace(/^\s*결과:\s*/, '').replace(/^[\d.]+\s*/, '');
-    
-    // 태그가 #으로 시작하지 않으면 추가
-    const finalTag = tag.startsWith('#') ? tag : `#${tag}`;
-    
-    console.log('GPT-4o 카테고리 분석 완료:', finalTag);
-    return finalTag;
-    
-  } catch (error) {
-    console.error('태그 생성 실패:', error);
-    return '#전자제품';
-  }
-}
-
-// Step 1-4 인사이트를 바탕으로 최종 개선된 아이디어 생성 - GPT-4o 사용
-export async function generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType) {
-  try {
-    console.log('GPT-4o 개선된 제품 정보 생성 중...');
-    
-    const improvePrompt = `역할: 당신은 제품 디자인 전문가입니다. 분석 결과를 바탕으로 개선된 제품 정보를 JSON으로 반환하세요.
-
-[원본 제품]
-제목: ${originalTitle}
-설명: ${originalDescription}
-
-[분석 인사이트]
-${stepsData.map(step => `Step ${step.stepNumber}: ${step.title}\n${step.description || ''}${step.subSteps ? '\n' + step.subSteps.map(sub => `- ${sub.title}`).join('\n') : ''}${step.descriptions ? '\n' + step.descriptions.join('\n') : ''}`).join('\n\n')}
-
-[스키마]
-{
-  "title": "개선된 제품 제목",
-  "description": "개선된 제품 설명"
-}
-
-[요구사항]
-- title: Step 4 인사이트를 반영한 혁신적인 새 제품명 (최대 30자)
-- description: 어떤 점이 개선되었는지 구체적 설명 (3-4문장)
-- JSON 외 텍스트 절대 금지, 줄바꿈은 공백으로 대체`;
-
-    // GPT-4o API 사용 (JSON 강제)
-    const responseText = await callGPTTextAPI(improvePrompt, true, 0.2, 400);
-    
-    console.log('응답 길이:', responseText.length);
-    
-    const result = JSON.parse(responseText);
-    
-    // 결과 검증 및 정리
-    if (!result.title || !result.description) {
-      throw new Error('필수 필드가 누락되었습니다');
+    if (!response.ok) {
+      throw new Error(`Vision API 요청 실패: ${response.status} ${response.statusText}`);
     }
+
+    const data = await response.json();
+    const result = data.choices[0].message.content;
     
-    // 텍스트 정리 (줄바꿈 제거)
-    result.title = result.title.replace(/[\n\r]/g, ' ').trim();
-    result.description = result.description.replace(/[\n\r]/g, ' ').trim();
-    
-    console.log('GPT-4o 파싱 및 검증 성공:', result);
+    console.log('Vision API 분석 완료:', result.substring(0, 100) + '...');
     return result;
     
   } catch (error) {
-    console.error('개선된 제품 정보 생성 실패:', error);
-    // 실패 시 기본값 반환
-    const typeNames = { creativity: '창의성', aesthetics: '심미성', usability: '사용성' };
-    return {
-      title: `${typeNames[additiveType] || '개선된'} ${originalTitle}`,
-      description: `${typeNames[additiveType] || '분석'} 첨가제를 통해 개선된 제품이에요.`
-    };
-  }
-}
-
-// 제품 타입 검증 및 보정 함수
-const validateAndFixProductType = (stabilityPrompt, title, description) => {
-  // 원본 제품 타입 찾기 - 더 포괄적인 매핑
-  let correctProductType = 'product';
-  let productKeywords = [];
-  
-  for (const [korean, englishTerms] of Object.entries(PRODUCT_TYPE_MAPPING)) {
-    if (title.includes(korean) || description.includes(korean)) {
-      correctProductType = englishTerms[0]; // 첫 번째 영어 용어 사용
-      productKeywords = englishTerms;
-      break;
-    }
-  }
-  
-  // 청소기 관련 특별 처리
-  if (title.includes('청소기') || description.includes('청소기') || 
-      title.includes('진공청소기') || description.includes('진공청소기')) {
-    correctProductType = 'vacuum cleaner';
-    productKeywords = ['vacuum cleaner', 'cleaning appliance', 'suction device'];
-  }
-  
-  // 잘못된 제품이 언급되었는지 확인
-  const hasUnwantedItems = UNWANTED_PRODUCT_KEYWORDS.some(item => 
-    stabilityPrompt.toLowerCase().includes(item.toLowerCase())
-  );
-  
-  // 잘못된 아이템이 감지되면 프롬프트 재구성
-  if (hasUnwantedItems) {
-    console.warn('잘못된 제품 타입 감지, 프롬프트 재구성 중...');
-    let fixedPrompt = stabilityPrompt;
-    
-    // 잘못된 키워드들을 올바른 제품 타입으로 교체
-    UNWANTED_PRODUCT_KEYWORDS.forEach(unwanted => {
-      const regex = new RegExp(`\\b${unwanted}\\b`, 'gi');
-      fixedPrompt = fixedPrompt.replace(regex, correctProductType);
-    });
-    
-    return fixedPrompt;
-  }
-  
-  // 제품 타입 키워드가 프롬프트에 포함되어 있는지 확인
-  const hasProductKeywords = productKeywords.some(keyword => 
-    stabilityPrompt.toLowerCase().includes(keyword.toLowerCase())
-  );
-  
-  // 제품 타입 키워드가 없으면 추가
-  if (!hasProductKeywords && correctProductType !== 'product') {
-    console.log(`제품 타입 키워드 추가: ${correctProductType}`);
-    return `${correctProductType}, ${stabilityPrompt}`;
-  }
-  
-  return stabilityPrompt;
-};
-
-// 필수 키워드 추가 함수
-const addEssentialKeywords = (stabilityPrompt) => {
-  ESSENTIAL_IMAGE_KEYWORDS.forEach(({ keywords, replacement }) => {
-    const hasKeyword = keywords.some(keyword => 
-      stabilityPrompt.toLowerCase().includes(keyword.toLowerCase())
-    );
-    if (!hasKeyword) {
-      stabilityPrompt += `, ${replacement}`;
-    }
-  });
-  
-  // 최종 안전장치: 제품이 잘리지 않도록 하는 강제 키워드 추가
-  if (!stabilityPrompt.toLowerCase().includes('full') && !stabilityPrompt.toLowerCase().includes('complete')) {
-    stabilityPrompt = `Full product view, ${stabilityPrompt}`;
-  }
-  
-  return stabilityPrompt;
-};
-
-// =============================================================================
-// API 함수 2: 이미지 생성 프롬프트 최적화 (GPT-4o 사용)
-// =============================================================================
-export async function generateStabilityPrompt(title, description, visionResult, originalImageUrl = null) {
-  try {
-    console.log('GPT-4o 이미지 생성 프롬프트 최적화 중...');
-    console.log('입력 데이터:');
-    console.log('- 제품 제목:', title);
-    console.log('- 제품 설명:', description.substring(0, 100) + '...');
-    console.log('- Vision 분석 유무:', !!visionResult);
-    
-    // 프롬프트 템플릿을 실제 데이터로 치환
-    const translatePrompt = STABILITY_PROMPT_TEMPLATE
-      .replace('{TITLE}', title)
-      .replace('{DESCRIPTION}', description)
-      .replace('{VISION_ANALYSIS}', visionResult ? `Vision Analysis: ${visionResult}` : 'No additional vision analysis available')
-      .replace('{REFERENCE_IMAGE_INFO}', originalImageUrl ? '### Reference Image Available\nA reference image will be provided to maintain visual consistency with the original idea.' : '');
-
-    console.log('GPT-4o로 전송할 프롬프트 길이:', translatePrompt.length);
-
-    // GPT-4o API 사용
-    const response = await callGPTTextAPI(translatePrompt, false, 0.3, 200);
-    let stabilityPrompt = response.trim();
-    
-    // 불필요한 따옴표나 설명 제거
-    stabilityPrompt = stabilityPrompt.replace(/^["']/, '').replace(/["']$/, '');
-    
-    console.log('원본 프롬프트 검증 중...');
-    console.log('생성된 프롬프트:', stabilityPrompt.substring(0, 150) + '...');
-    
-    // 제품 타입 검증 및 보정
-    stabilityPrompt = validateAndFixProductType(stabilityPrompt, title, description);
-    
-    // 필수 키워드 추가
-    stabilityPrompt = addEssentialKeywords(stabilityPrompt);
-    
-    console.log('최종 GPT-4o 프롬프트:', stabilityPrompt);
-    return stabilityPrompt;
-    
-  } catch (error) {
-    console.error('프롬프트 생성 실패:', error);
-    // 실패 시 기본 프롬프트 반환 (원본 제품 정보 기반)
-    const productType = title.toLowerCase().includes('의자') ? 'chair' : 
-                        title.toLowerCase().includes('벤치') ? 'bench' :
-                        title.toLowerCase().includes('테이블') ? 'table' :
-                        title.toLowerCase().includes('램프') ? 'lamp' :
-                        title.toLowerCase().includes('선반') ? 'shelf' :
-                        'product';
-    
-    const fallbackPrompt = `Photorealistic commercial-grade rendering of ${productType} based on "${title}", ultra-realistic, completely visible, not cropped, proper framing, adequate spacing around product, professional studio photography, premium materials, clean white background, advanced lighting setup, ultra-sharp details, 8K resolution quality, high-end commercial visualization`;
-    console.log('Ultra Model Fallback 프롬프트 사용:', fallbackPrompt);
-    return fallbackPrompt;
-  }
-}
-
-// Stability AI로 제품 이미지 생성
-export async function generateProductImageWithStability(promptText, originalImageUrl = null) {
-  try {
-    console.log('Stability AI 이미지 생성 시작...');
-    console.log('사용할 프롬프트:', promptText);
-    
-    if (!STABILITY_API_KEY) {
-      throw new Error('Stability AI API 키가 설정되지 않았습니다.');
-    }
-    
-    // FormData 생성 - Ultra 모델용 (model 파라미터 불필요)
-    const formData = new FormData();
-    // 고품질 제품 렌더링을 위한 프롬프트 강화
-    const enhancedPrompt = `Professional high-quality product photography, photorealistic rendering, ${promptText}, commercial grade image, studio lighting, ultra-sharp details, premium finish, 8K resolution quality`;
-    formData.append('prompt', enhancedPrompt);
-    formData.append('aspect_ratio', '1:1');
-    formData.append('output_format', 'png');
-    
-    // 참조 이미지가 있는 경우 추가
-    if (originalImageUrl) {
-      try {
-        // 프록시를 사용한 이미지 로드 시도 (개발 환경)
-        let imageBlob;
-        if (USE_PROXY && /^https?:\/\/firebasestorage\.googleapis\.com/.test(originalImageUrl)) {
-          console.log('🌐 참조 이미지 프록시 로드 시도');
-          const dataUrl = await loadImageViaProxy(originalImageUrl);
-          const response = await fetch(dataUrl);
-          imageBlob = await response.blob();
-        } else {
-          // 일반 fetch
-          const imageResponse = await fetch(originalImageUrl);
-          if (imageResponse.ok) {
-            imageBlob = await imageResponse.blob();
-          }
-        }
-        
-        if (imageBlob) {
-          formData.append('image', imageBlob, 'reference.png');
-          formData.append('strength', '0.35'); // 참조 이미지 영향도 (0.1-1.0)
-          console.log('참조 이미지 추가됨');
-        }
-      } catch (imageError) {
-        console.warn('참조 이미지 로드 실패, 텍스트만으로 생성:', imageError.message);
-      }
-    }
-
-    // 개발 환경에서 프록시 사용 시도
-    let imageBuffer;
-    if (USE_PROXY) {
-      try {
-        console.log('개발 환경 - Stability AI 프록시 사용');
-        imageBuffer = await callStabilityViaProxy(formData);
-        console.log('프록시 Stability AI 성공');
-      } catch (proxyError) {
-        console.warn('프록시 실패, 직접 API 호출로 fallback:', proxyError.message);
-        // 프록시 실패 시 직접 API 호출
-        const response = await fetch(STABILITY_API_URL, {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${STABILITY_API_KEY}`,
-            "Accept": "image/*"
-          },
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Stability AI API 오류: ${response.status} - ${errorText}`);
-        }
-
-        imageBuffer = await response.arrayBuffer();
-      }
-    } else {
-      // 프로덕션 환경 - 직접 API 호출
-      const response = await fetch(STABILITY_API_URL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${STABILITY_API_KEY}`,
-          "Accept": "image/*"
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Stability AI API 오류 상세:', errorText);
-        console.error('HTTP 상태:', response.status);
-        throw new Error(`Stability AI API 오류: ${response.status} - ${errorText}`);
-      }
-
-      imageBuffer = await response.arrayBuffer();
-    }
-    const base64Image = btoa(
-      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
-    const dataUrl = `data:image/png;base64,${base64Image}`;
-    
-    console.log('Stability AI 이미지 생성 완료');
-    return dataUrl;
-    
-  } catch (error) {
-    console.error('이미지 생성 실패:', error);
-    console.error('오류 타입:', error.name);
-    console.error('오류 메시지:', error.message);
-    console.error('사용된 프롬프트:', promptText.substring(0, 200) + '...');
+    console.error('Vision 분석 실패:', error);
     throw error;
   }
 }
 
-// 통합 함수: 제품 정보로부터 Stability AI 이미지까지 한번에 생성
-export async function generateImprovedProductWithImage(originalTitle, originalDescription, stepsData, additiveType, visionResult = '', originalImageUrl = null) {
-  let improvedInfo = null;
+/**
+ * GPT를 통해 이미지 편집 프롬프트를 생성하는 함수
+ * @param {string} title - 개선된 제품의 제목
+ * @param {string} description - 개선된 제품의 설명
+ * @param {string} step4Description - step4의 구현 전략 설명
+ * @param {string} additiveType - 첨가제 유형 (creativity, aesthetics, usability)
+ * @returns {Promise<string>} 생성된 이미지 편집 프롬프트
+ */
+export async function createImageEditPrompt(title, description, step4Description, additiveType) {
+  try {
+    console.log('이미지 편집 프롬프트 생성 시작');
+    
+    const additiveTypeName = getAdditiveTypeName(additiveType);
+    
+    const prompt = `당신은 이미지 생성AI 프롬프트 전문가입니다. 주어진 제품 정보와 개선 전략을 바탕으로 이미지를 어떻게 수정해야 하는지에 대한 구체적인 프롬프트를 생성해주세요.
+
+제품 정보:
+- 제목: "${title}"
+- 설명: "${description}"
+- 첨가제 유형: ${additiveTypeName}
+- 구현 전략: "${step4Description}"
+
+요구사항:
+1. 원본 이미지를 어떻게 수정해야 하는지 구체적으로 설명
+2. ${additiveTypeName} 관점에서의 시각적 개선 방향 제시
+3. 색상, 형태, 구조, 질감 등 구체적인 시각적 요소 언급
+4. 제품의 기능과 가치가 시각적으로 드러나도록 하는 방법 제시
+5. 사용자 경험을 개선하는 시각적 변화 제안
+
+금지사항:
+- 절대 배경 요소를 추가하지 마세요. 제품 자체의 변화에만 집중하세요. 배경색은 흰색 또는 투명으로 유지하세요.
+- 사람이나 문자, 텍스트, 동물 등을 추가하지마세요. 제품 외의 요소는 절대 포함하지 마세요.
+- 도면이나 그리드, 스케치 스타일을 사용하지 마세요. 실제 제품처럼 보이도록 하세요.
+
+다음과 같은 형식으로 이미지 편집 지시사항을 작성해주세요:
+"[구체적인 이미지 편집 지시사항]"
+
+추가 설명이나 부연 설명 없이 편집 지시사항만 출력해주세요.`;
+
+    const response = await callGPTTextAPI(prompt, false, 0.7, 300);
+    const editPrompt = response.trim().replace(/^["']/, '').replace(/["']$/, '');
+    
+    console.log('이미지 편집 프롬프트 생성 완료:', editPrompt.substring(0, 100) + '...');
+    return editPrompt;
+    
+  } catch (error) {
+    console.error('이미지 편집 프롬프트 생성 실패:', error);
+    // 기본 프롬프트 반환
+    return `${title}의 ${getAdditiveTypeName(additiveType)} 특성을 강화하여 제품을 시각적으로 개선해주세요. ${description}`;
+  }
+}
+
+// =============================================================================
+// promptTest와 동일한 GPT-4o-mini 프롬프트 템플릿
+// =============================================================================
+
+//사례기반추론 정의
+const CBR_ANALYSIS_THEORY = `
+        제품디자인 사례를 속성(형태·재료·색 등) 단위로 구조화하여 분석하고, 입력 아이디어와의 유사도를 분석하여 적용 가능한 요소에 전이(transfer)하는 방법론입니다. 레퍼런스 이미지의 심미적 요소를 분석하여 사용자의 디자인에 전이(Transfer)시켜 발전된 아이디어를 제공해야합니다.
+`;
+
+// 과제 분석법 정의
+const TASK_ANALYSIS_THEORY = `
+        전통적인 과제 분석은 시스템을 사용하며 사용자들의 상호 작용에 대한 과학적 관점에서 접근한다. 사용자들의 행동, 행동 별 제품 시스템의 피드백, 또는 시스템의 움직임과 반응 등 주요 요소를 하나 하나 떼어놓고 분석한다. 과제분석은 맥락적 연구와 유사한 면이 있는데 이는 관찰이나 인터뷰를 비롯한 동일 방법들을 많이 사용하기 때문이다. 그러나 맥락적 연구가 사용자의 행동, 전체적 맥락 속에서의 의사 결정 과정과 상호작용등 전반적인 면을 포괄적으로 다루는데 반해, 과제 분석은 오로지 과제 자체에만 중점을 둔다는 점이 차이점이다. 이러한 과제 분석은 문서 인쇄 안내 시스템, 소프트 웨어 장치의 상호 작용 탐색에 이르기까지 모든 디자인 분야에 유용하게 쓰인다.
+        과제 분석법은 사용자의 활동을 행동으로 세분화하고, 행동에 따른 제품이나 시스템의 움직임과 반응, 피드백, 작업의 맥락 등 각각의 주요 요소로 분류하여 정리한다. 분류를 마친 내용을 살펴보며 사용자의 움직임이나 반응에 대한 피드백을 작성하여 인사이트를 도출하는 방법론이다.
+        참고요약:과제 분석법은 사용자가 특정 목표를 달성하기 위해 수행하는 구체적인 단계와 절차를 체계적으로 분석하는 방법론이다. 이는 제품을 사용하는 시나리오를 가정하고 사용자의 행동을 목표, 조작 등의 구조로 분해함으로써, 디자이너는 사용자가 실제로 어려움을 겪는 지점(Pain Point)을 구체적으로 확인할 수 있다. 이를 통해 사용자의 어려움을 해소하여 사용성을 향상시키는 아이디어를 제안할 수 있다. 
+`;
+
+// TRIZ 40가지 발명 원리 정의 (script.js와 동일)
+const TRIZ_PRINCIPLES = `
+    1. 분할: 시스템을 여러 개의 독립적 부분으로 나눠 모듈화하거나 조합 가능하게 한다.  
+    2. 추출: 불필요하거나 방해되는 요소를 제거하고 필요한 부분만 추출한다.  
+    4. 비대칭: 대칭 구조를 비대칭으로 바꾸어 성능이나 기능을 개선한다.  
+    5. 결합: 서로 다른 기능이나 시스템을 결합해 하나로 통합한다.  
+    6. 범용성: 하나의 시스템이 여러 기능을 수행하도록 다용도화한다.  
+    8. 무게 없애기: 환경(공기, 부력 등)과 상호작용하여 물체의 무게를 상쇄시킨다.
+    13. 반대로 하기: 문제 해결에 요구되는 작용을 거꾸로 하여 과정, 기능, 구조를 거꾸로 수행한다.  
+    14. 곡선화/구형화: 직선이나 평면을 곡선이나 구형으로 바꿔 이점을 얻는다.  
+    24. 중간 매개물: 작용을 수행하거나 전달하기 위해 중간 매개물을 사용한다.
+    25. 자가 서비스: 물체 스스로 유익한 작용을 하고 유지보수 할 수 있게 한다.
+    26. 복제: 실제 대신 모형이나 복제품을 활용한다.  
+    29. 공기 및 유압 사용: 물체의 고체 부분을 기체나 액체로 대체한다. / 기체나 액체 부분은 팽창을 위해 공기나 물을 사용한다.
+    30. 유연한 껍질과 얇은 막: 단단한 재료 대신 얇고 유연한 막을 사용한다.  
+    32. 색깔 변화: 물체 또는 환경의 색, 투명도를 바꾼다.
+    33. 균질성: 본체와 상호작용하는 주변 물체는 본체와 동일한 재료로 만든다.
+    34. 폐기 및 재생: 사용 후 버리거나 회수해 재활용한다.  
+`;
+
+// GPT-4o-mini용 프롬프트 템플릿 (promptTest와 완전 동일)
+const GPT_MINI_PROMPTS = {
+  creativity: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+    당신은 창의적인 발상을 가진 제품 디자이너입니다.
+    다음 OriginIdea의 정보를 바탕으로 TRIZ 40가지 발명 원리를 적용하여 인사이트를 추출하는 것이 목표입니다.
+    인사이트를 도출할 때 형태, 외형, 심미적으로 발전하는 방향으로 접근하세요.
+    설명은 최대한 자세히 작성하여 리포트의 분량으로 응답하세요.
+    OriginIdeaTitle은 "${ideaTitle}" 을 의미합니다.
+    총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
+    출력해주는 말투는" 했어요.", "였어요.", "에요."를 사용하세요.
+    각 Step별로 아래 요구사항을 참고하여 최종 json schema에 맞게 JSON 형식으로 작성하세요.
+
+    **중요한 일관성 검증 요구사항**:
+    응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
+    1. Step1에서 제기한 문제점들이 Step3의 각 단계에서 일관되게 언급되는지 확인
+    2. Step3에서 도출한 문제점들이 Step4의 해결방안과 논리적으로 연결되는지 확인
+    3. Step4에서 제시한 TRIZ 원리들이 실제로 Step3의 문제점들을 해결할 수 있는지 확인
+    4. 전체 흐름에서 모순되는 내용이나 상반된 주장이 없는지 확인
+    5. 각 Step의 내용이 OriginIdea의 실제 특성과 부합하는지 확인
+    
+    만약 검증 과정에서 모순이나 일관성 문제를 발견하면, 해당 부분을 수정하여 논리적 일관성을 유지하세요.
+
+    ##Step1: 평가(총평)
+    - title: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요.
+    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다.
+
+    ##Step2: TRIZ 원리 적용
+    - title: "창의성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - description: TRIZ의 원리를 설명하는 단계입니다. TRIZ 발명 원리를 사용하게 되었을때, OriginIdea의 형태나 외형 심미적으로 어떻게 발전될 수 있는지에 대한 가능성을 제시하세요. 너무 자세하게 TRIZ 원리를 적용 했을 때의 가설을 설명하지 말고, 간단하게 소개하세요. ex){OriginIdeaTitle}에 TRIZ를 적용하면, 순차적으로 문제를 분석하고 문제에 따라 TRIZ 원리를 적용하여 디자인을 재구성하게 돼요.
+
+    ##Step3: 원리 적용 과정
+    - step3a, step3b, step3c: Step1의 평가 내용 및 OriginIdea의 정보를 연결지어 설명해야 합니다. 총 3개의 문제점을 도출해야 하며, 같은 문제점을 언급하지 않도록 주의하세요. step3a, step3b, step3c 외 별도의 항목 추가 금지. 절대로 해결 방법을 제시하지 말고 문제점 및 고민해야 할 과제를 제시하세요.
+    - title: Step3의 Step1의 평가 및 OriginIdea의 정보를 바탕으로 문제점을 도출하여 소비자의 입장에서 1줄로 요약한 내용을 구어체로 작성합니다.
+    - description: Step3.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다.
+
+    ##Step4: 인사이트 도출
+    - title: Step3에서 제시한 OriginIdea의 문제점 3가지를 어떤 TRIZ 원리로 해결할 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
+    - description: Step4.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. OriginIdea의 문제점을 해결할 수 있는 TRIZ 원리를 구체적으로 언급하고, 어떻게 바뀔 수 있는지 가능성을 제시하세요.
+
+    ##OriginIdea:
+    title: ${ideaTitle}
+    description: ${ideaDescription}
+
+    ##TRIZ 40가지 발명 원리는 ${TRIZ_PRINCIPLES}를 참고하여 디자인에 적용할 수 있는 원리만을 사용하세요. 40가지의 발명 원리 중 15가지만 선정했습니다.
+
+    ##JSON 형태 외 다른 설명 금지, 백틱이나 점 출력 금지, JSON 스키마 오류 없이 출력
+
+    ##JSON schema:
+    {
+    "step1": {"title": "", "description": "300자 이상"},
+    "step2": {"title": "", "description": ""},
+    "step3": {
+        "step3a": { "title": "", "description": "300자 이상" },
+        "step3b": { "title": "", "description": "300자 이상" },
+        "step3c": { "title": "", "description": "300자 이상" }
+    },
+    "step4": {"title": "", "description": "500자 이상"}
+    }
+    `,
+
+  aesthetics: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+    당신은 제품 디자인에서 심미성을 중심적으로 평가하는 전문가이며, 사례 기반 추론(Case-Based Reasoning) 방법론을 바탕으로 응답합니다.
+    다음 OriginIdea의 정보와 레퍼런스 이미지 분석을 바탕으로 사례 기반 추론을 적용하여 인사이트를 추출하는 것이 목표입니다.
+    인사이트를 도출할 때 형태, 재료, 색상 등의 속성을 분석하고 OriginIdea에 전이(Transfer)하는 방향으로 접근하세요.
+    설명은 최대한 자세히 작성하여 리포트의 분량으로 응답하세요.
+    OriginIdeaTitle은 "${ideaTitle}" 을 의미합니다.
+    총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
+
+   **중요한 일관성 검증 요구사항**:
+    응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
+    1. Step1에서 제기한 심미적 문제점들이 Step3의 각 단계에서 일관되게 언급되는지 확인
+    2. Step3에서 도출한 심미적 개선점들이 Step4의 레퍼런스 전이 방안과 논리적으로 연결되는지 확인
+    3. Step4에서 제시한 사례 기반 해결책들이 실제로 Step3의 문제점들을 개선할 수 있는지 확인
+    4. 전체 흐름에서 모순되는 심미적 평가나 상반된 주장이 없는지 확인
+    5. 각 Step의 내용이 OriginIdea와 레퍼런스 이미지의 실제 특성과 부합하는지 확인
+    
+    만약 검증 과정에서 모순이나 일관성 문제를 발견하면, 해당 부분을 수정하여 논리적 일관성을 유지하세요.
+    출력해주는 말투는" 했어요.", "였어요.", "에요."를 사용하세요.
+    각 Step별로 아래 요구사항을 참고하여 최종 json schema에 맞게 JSON 형식으로 작성하세요.
+
+    ##Step1: 평가(총평)
+    - title: OriginIdea의 현재 심미적 특징과 한계점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요.
+    - description: OriginIdea의 심미적 장점과 문제점을 객관적으로 분석하여 평가를 상세히 설명하세요. 형태, 색상, 재질 측면에서의 한계점을 중점적으로 찾아내는 것이 중요합니다.
+
+    ##Step2: 사례 기반 추론 적용
+    - title: "심미성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - description: 사례 기반 추론 방법론을 설명하는 단계입니다. 레퍼런스 이미지의 우수한 디자인 사례를 어떻게 OriginIdea에 적용할 수 있는지에 대한 가능성을 제시하세요. ex) ${ideaTitle}에 사례 기반 추론을 적용하면, 레퍼런스 이미지의 디자인 속성을 형태, 재료, 색상 단위로 구조화하여 분석하고, 기존 아이디어와의 유사도를 분석하여 적용 가능한 요소를 전이하는 방식이에요.
+
+    ##Step3: 속성 분석 및 전이 과정
+    - step3a, step3b, step3c: 레퍼런스 이미지와 OriginIdea를 비교 분석해야 합니다. 3가지 핵심 속성(형태, 재료, 색상)별로 분석하되, 각각 다른 속성을 다뤄야 합니다. step3a, step3b, step3c 외 별도의 항목 추가 금지. 해결방법을 제시하지 말고 속성별 차이점과 전이 가능성을 분석하세요.
+    - title: 레퍼런스 이미지의 우수한 디자인 속성이 OriginIdea에 어떻게 적용될 수 있는지 소비자 관점에서 1줄로 요약한 내용을 구어체로 작성합니다. 레퍼런스의 속성이 OriginIdea의 단점을 어떻게 보완하는지 작성하면 됩니다.
+    - description: Step3.title에서 1줄로 요약한 내용을 상세히 분석하여 설명합니다. 형태/재료/색상 중 해당 step.title에 집중하여 설명하세요.
+
+    ##Step4: 심미적 인사이트 도출
+    - title: Step3에서 분석한 3가지 속성의 전이를 통해 OriginIdea가 어떻게 심미적으로 개선될 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
+    - description: Step4.title에서 1줄로 요약한 내용을 상세히 설명합니다. 형태, 재료, 색상 속성의 종합적 전이를 통해 OriginIdea가 어떻게 시각적으로 발전할 수 있는지 구체적인 가능성을 제시하세요.
+
+    ##OriginIdea:
+    title: ${ideaTitle}
+    description: ${ideaDescription}
+
+    ##레퍼런스 이미지 분석:
+    ${referenceAnalysis}
+
+    ##사례 기반 추론 방법론은: 
+
+    ##JSON 형태 외 다른 설명 금지, 백틱이나 점 출력 금지, JSON 스키마 오류 없이 출력
+
+    ##JSON schema:
+    {
+    "step1": {"title": "", "description": "300자 이상"},
+    "step2": {"title": "", "description": ""},
+    "step3": {
+        "step3a": { "title": "", "description": "300자 이상" },
+        "step3b": { "title": "", "description": "300자 이상" },
+        "step3c": { "title": "", "description": "300자 이상" }
+    },
+    "step4": {"title": "", "description": "500자 이상"}
+    }
+    `,
+
+  usability: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+    당신은 제품의 사용성(UX)을 테스트하는 전문 제품 디자이너입니다.
+    다음 OriginIdea의 정보를 바탕으로 과제분석법(Task analysis)을 적용하여 인사이트를 추출하는 것이 목표입니다.
+    인사이트를 도출할 때 기능, 요소, 차별 포인트를 발전하는 방향으로 접근하세요.
+    설명은 최대한 자세히 작성하여 리포트의 분량으로 응답하세요.
+    OriginIdeaTitle은 "${ideaTitle}" 을 의미합니다.
+    총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
+    출력해주는 말투는" 했어요.", "였어요.", "에요."를 사용하세요.
+    각 Step별로 아래 요구사항을 참고하여 최종 json schema에 맞게 JSON 형식으로 작성하세요.
+
+    **중요한 일관성 검증 요구사항**:
+    응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
+    1. Step1에서 제기한 사용성 문제점들이 Step3의 각 시나리오에서 일관되게 언급되는지 확인
+    2. Step3에서 도출한 사용자 시나리오의 문제점들이 Step4의 해결방안과 논리적으로 연결되는지 확인
+    3. Step4에서 제시한 과제분석법 기반 해결책들이 실제로 Step3의 문제점들을 개선할 수 있는지 확인
+    4. 전체 흐름에서 모순되는 사용성 평가나 상반된 주장이 없는지 확인
+    5. 각 Step의 내용이 OriginIdea의 실제 사용 맥락과 부합하는지 확인
+    
+    만약 검증 과정에서 모순이나 일관성 문제를 발견하면, 해당 부분을 수정하여 논리적 일관성을 유지하세요.
+
+    ##Step1: 평가(총평)
+    - title: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요. 문제점이 여러 개가 있다면, 그 중 가장 중요한 문제점을 1개만 제시하세요.
+    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다.
+
+    ##Step2: 과제분석법 적용
+    주의할 점: ex) 예시와 똑같은 구조는 최대한 피하세요. OriginIdea의 특성에 맞게 자연스럽게 작성하세요.
+    - title: "사용성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - description: 과제 분석법을 설명하는 단계입니다. 과제 분석법을 사용하게 되었을때, OriginIdea의 기능이나 요소, 차별 포인트가 어떻게 발전될 수 있는지에 대한 가능성을 제시하세요. 너무 자세하게 과제 분석법을 적용 했을 때의 가설을 설명하지 말고, 간단하게 소개하세요. ex){OriginIdeaTitle}에 과제 분석법을 적용하면, 사용자가 실제로 이 제품을 사용할 때 어떤 순서로 어떤 행동을 하는지를 1단계부터 5단계까지 시나리오 흐름으로 분해한 뒤, 각 단계에서 발생할 수 있는 문제점을 찾아내고, 이를 중심으로 기능적 개선점을 도출하는 방식이에요.
+
+    ##Step3: 과제 분석법 적용 과정
+    주의할 점: ex) 예시와 똑같은 구조는 최대한 피하세요. OriginIdea의 특성에 맞게 자연스럽게 작성하세요.
+    - step3a, step3b, step3c, step3d, step3e: Step1의 평가 내용 및 OriginIdea의 정보를 연결지어 설명해야 합니다. 총 5개의 시나리오를 도출해야 하며, OriginIdea를 사용하는 시나리오의 흐름이 자연스럽게 이어지도록 주의하세요. step3a, step3b, step3c, step3d, step3e 외 별도의 항목 추가 금지. OriginIdea를 사용하는 사용자의 상황을 시나리오 형식으로 구성하여 상황 별 문제점을 제시하세요. 절대로 해결 방법을 제시하지 말고 문제점 및 고민해야 할 과제를 제시하세요.
+    - step3title: Step3의 description에 제시한 모든 상황을 종합하여 OriginIdea을 사용하는 소비자의 감정이나 느낌을 1줄로 요약한 내용을 구어체로 작성합니다. 너무 진부하고 1차원적인 내용으로 요약하는 것을 피하세요. 문제점이 여러 개가 있다면, 그 중 가장 중요한 문제점을 1개만 제시하세요. ex) {OriginIdeaTitle}을 사용하면서 앉는게 불편했어요.
+    - description: 단계별 상황에 따라 사용자의 입장에서 느낀 단점이나 불편함을 상세히 묘사하며 설명합니다. ex) 책을 꺼내고 나서 주변을 둘러보며 읽을 책을 고르려 했는데, 어떤 주제인지 알 수 없고, 정리 기준이 없어 오래 머물기 어려웠어요.
+
+    ##Step4: 인사이트 도출
+    - title: Step3에서 OriginIdea를 사용하는 시나리오에서 발견한 문제점을 해결할 수 있는 인사이트를 1줄로 요약한 내용을 구어체로 작성합니다.
+    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요.
+
+    ##OriginIdea:
+    title: ${ideaTitle}
+    description: ${ideaDescription}
+
+    ##과제 분석법의 정보는 "${TASK_ANALYSIS_THEORY}"를 참고하여 제품 사용 시나리오와 문제점을 도출하는데 활용하세요.
+
+    ##JSON 형태 외 다른 설명 금지, 백틱이나 점 출력 금지, JSON 스키마 오류 없이 출력
+
+    ##JSON schema:
+    {
+    "step1": {"title": "", "description": "300자 이상"},
+    "step2": {"title": "", "description": ""},
+    "step3": {
+        "step3title": { "title": "" },
+        "step3a": { "description": "400자 이상" },
+        "step3b": { "description": "400자 이상" },
+        "step3c": { "description": "400자 이상" },
+        "step3d": { "description": "400자 이상" },
+        "step3e": { "description": "400자 이상" }
+    },
+    "step4": {"title": "", "description": "600자 이상"}
+    }
+    `
+};
+
+// =============================================================================
+// LabPage에서 사용하는 메인 함수들
+// =============================================================================
+
+
+
+/**
+ * LabPage에서 호출하는 메인 분석 함수 (script.js와 동일한 구조)
+ * @param {string} additiveType - 첨가제 유형 (creativity, aesthetics, usability)
+ * @param {string} ideaTitle - 아이디어 제목
+ * @param {string} ideaDescription - 아이디어 설명
+ * @param {string} visionAnalysis - Vision API 분석 결과 (사용 안함)
+ * @param {string} referenceAnalysis - 레퍼런스 이미지 분석 (심미성용)
+ * @param {number} sliderValue - 슬라이더 값 (사용 안함)
+ * @returns {Promise<Object>} 분석 결과
+ */
+export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visionAnalysis, referenceAnalysis = null, sliderValue = 1) {
+  // 입력 변수 유효성 검증
+  if (!additiveType || typeof additiveType !== 'string') {
+    console.error('❌ analyzeIdea 실패: additiveType이 비어있음', additiveType);
+    alert('분석을 위한 첨가제 타입이 선택되지 않았습니다.');
+    throw new Error('첨가제 타입이 누락됨');
+  }
   
-  // 디버깅 로그 추가
-  console.log('통합 함수 호출 - 입력 파라미터:');
-  console.log('- 원본 제목:', originalTitle);
-  console.log('- 원본 설명:', originalDescription.substring(0, 100) + '...');
-  console.log('- 첨가제 타입:', additiveType);
-  console.log('- Vision 결과 있음:', !!visionResult);
-  console.log('- 원본 이미지 URL 있음:', !!originalImageUrl);
+  if (!ideaTitle || typeof ideaTitle !== 'string' || ideaTitle.trim() === '') {
+    console.error('❌ analyzeIdea 실패: ideaTitle이 비어있음', ideaTitle);
+    alert('분석을 위한 아이디어 제목이 누락되었습니다.');
+    throw new Error('아이디어 제목이 누락됨');
+  }
+  
+  if (!ideaDescription || typeof ideaDescription !== 'string' || ideaDescription.trim() === '') {
+    console.error('❌ analyzeIdea 실패: ideaDescription이 비어있음', ideaDescription);
+    alert('분석을 위한 아이디어 설명이 누락되었습니다.');
+    throw new Error('아이디어 설명이 누락됨');
+  }
+  
+  if (!GPT_MINI_PROMPTS[additiveType]) {
+    console.error('❌ analyzeIdea 실패: 지원하지 않는 첨가제 타입', additiveType);
+    alert(`지원하지 않는 첨가제 타입입니다: ${additiveType}`);
+    throw new Error('지원하지 않는 첨가제 타입');
+  }
   
   try {
-    console.log('개선된 제품 정보 및 이미지 생성 프로세스 시작...');
+    console.log('🔍 GPT 분석 시작:', { ideaTitle, additiveType, sliderValue });
+    console.log('📋 아이디어 제목:', ideaTitle);
+    console.log('📄 아이디어 설명:', ideaDescription.substring(0, 100) + '...');
+    console.log('🧪 첨가제 타입:', additiveType);
+    console.log('⚖️ 슬라이더 값:', sliderValue);
     
-    // 1. 개선된 제품 정보 생성
-    improvedInfo = await generateImprovedProductInfo(originalTitle, originalDescription, stepsData, additiveType);
-    console.log('개선된 제품 정보 생성 성공');
+    const prompt = GPT_MINI_PROMPTS[additiveType](ideaTitle, ideaDescription, referenceAnalysis, sliderValue)
+    
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
+          { role: "user", content: prompt }
+        ],
+        temperature: 0.7
+      })
+    });
+    
+    const data = await response.json();
+    const text = data.choices[0].message.content;
+    
     
     try {
-      // 2. Stability AI용 프롬프트 생성
-      console.log('Stability AI 프롬프트 생성 중...');
-      console.log('프롬프트 생성용 데이터:');
-      console.log('- 개선된 제목:', improvedInfo.title);
-      console.log('- 개선된 설명:', improvedInfo.description.substring(0, 100) + '...');
-      console.log('- Vision 결과:', visionResult ? visionResult.substring(0, 100) + '...' : 'None');
+      const stepData = JSON.parse(text);
+      console.log('GPT 분석 완료:', stepData);
       
-      const stabilityPrompt = await generateStabilityPrompt(
-        improvedInfo.title, 
-        improvedInfo.description, 
-        visionResult, 
-        originalImageUrl
-      );
-      console.log('Stability AI 프롬프트 생성 성공');
-      console.log('최종 생성된 프롬프트:', stabilityPrompt);
-      
-      // 3. Stability AI로 이미지 생성 (원본 이미지가 있으면 img2img 사용)
-      console.log('Stability AI 이미지 생성 중...');
-      let imageUrl;
-      
-      if (originalImageUrl && originalImageUrl.startsWith('data:image/')) {
-        // img2img 사용 (원본 이미지가 data URL인 경우) - 강도를 낮춰서 원본 특성 더 유지
-        console.log('IMG2IMG 모드 사용 - 원본 이미지 기반 개선 (강도: 0.5)');
-        imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, originalImageUrl, 0.5);
-      } else if (originalImageUrl && (originalImageUrl.startsWith('http://') || originalImageUrl.startsWith('https://'))) {
-        // Firebase Storage URL을 프록시를 통해 data URL로 변환 후 img2img 사용
-        console.log('IMG2IMG 모드 사용 - 프록시를 통한 Firebase URL 처리 (강도: 0.5)');
-        try {
-          // 프록시를 사용한 이미지 로드 시도
-          let dataUrl;
-          console.log('URL 패턴 분석:', originalImageUrl.substring(0, 100) + '...');
-          
-          const isFirebaseStorage = /^https?:\/\/(firebasestorage\.googleapis\.com|.*\.firebasestorage\.app)/.test(originalImageUrl);
-          const isFirebaseApp = originalImageUrl.includes('.firebasestorage.app');
-          const isFirebaseApi = originalImageUrl.includes('firebasestorage.googleapis.com');
-          
-          console.log('URL 분석 결과:');
-          console.log('  - isFirebaseStorage:', isFirebaseStorage);
-          console.log('  - isFirebaseApp:', isFirebaseApp);
-          console.log('  - isFirebaseApi:', isFirebaseApi);
-          
-          if (isFirebaseStorage) {
-            console.log('Firebase Storage URL 감지 - 프록시 사용');
-            dataUrl = await loadImageWithCORSWorkaround(originalImageUrl);
-          } else {
-            console.log('일반 URL - 직접 로드 시도');
-            const response = await fetch(originalImageUrl);
-            const blob = await response.blob();
-            dataUrl = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.readAsDataURL(blob);
-            });
-          }
-          
-          console.log('data URL 변환 완료, img2img 시작');
-          imageUrl = await generateProductImageWithStability_I2I(stabilityPrompt, dataUrl, 0.5);
-        } catch (fetchError) {
-          console.warn('이미지 URL 변환 실패, text-to-image로 대체:', fetchError);
-          console.warn('오류 상세:', fetchError.message);
-          imageUrl = await generateProductImageWithStability(stabilityPrompt);
-        }
+      // ResultReport에서 사용할 수 있도록 steps 배열로 변환
+      const steps = [];
+      if (additiveType === 'usability') {
+        // 사용성: script.js의 step3title + step3a~e 구조
+        steps.push({ stepNumber: 1, title: stepData.step1.title, description: stepData.step1.description });
+        steps.push({ stepNumber: 2, title: stepData.step2.title, description: stepData.step2.description });
+        steps.push({ 
+          stepNumber: 3, 
+          title: stepData.step3.step3title.title, 
+          descriptions: [
+            stepData.step3.step3a.description,
+            stepData.step3.step3b.description,
+            stepData.step3.step3c.description,
+            stepData.step3.step3d.description,
+            stepData.step3.step3e.description
+          ]
+        });
+        steps.push({ stepNumber: 4, title: stepData.step4.title, description: stepData.step4.description });
       } else {
-        // 일반 text-to-image 사용
-        console.log('TEXT-TO-IMAGE 모드 사용');
-        imageUrl = await generateProductImageWithStability(stabilityPrompt);
+        // 창의성, 심미성: script.js의 step3a~c 구조
+        steps.push({ stepNumber: 1, title: stepData.step1.title, description: stepData.step1.description });
+        steps.push({ stepNumber: 2, title: stepData.step2.title, description: stepData.step2.description });
+        steps.push({ 
+          stepNumber: 3, 
+          title: `${additiveType === 'creativity' ? 'TRIZ' : '스키마'} 원리 적용 과정`,
+          subSteps: [
+            { title: stepData.step3.step3a.title, description: stepData.step3.step3a.description },
+            { title: stepData.step3.step3b.title, description: stepData.step3.step3b.description },
+            { title: stepData.step3.step3c.title, description: stepData.step3.step3c.description }
+          ]
+        });
+        steps.push({ stepNumber: 4, title: stepData.step4.title, description: stepData.step4.description });
       }
       
-      console.log('Stability AI 이미지 생성 성공');
-      
-      return {
-        ...improvedInfo,
-        imageUrl,
-        originalImagePrompt: stabilityPrompt,
-        imageGenerationSuccess: true
-      };
-      
-    } catch (imageError) {
-      console.error('Stability AI 이미지 생성 실패:', imageError);
-      
-      // 이미지 생성 실패 시 null로 명시적 표시 (원본 이미지 대체하지 않음)
-      return {
-        ...improvedInfo,
-        imageUrl: null, // 명시적으로 null - 이미지 생성 실패
-        originalImagePrompt: null,
-        imageGenerationSuccess: false,
-        imageGenerationError: imageError.message
-      };
+      return { steps: steps };
+    } catch (e) {
+      console.error("JSON parse error:", e, text);
+      throw new Error("JSON 파싱 실패: 프롬프트를 조정하거나 response_format을 확인하세요.");
     }
     
   } catch (error) {
-    console.error('통합 제품 생성 완전 실패:', error);
+    console.error('아이디어 분석 실패:', error);
+    throw error;
+  }
+}
+
+// =============================================================================
+// promptTest 로직에 따른 새로운 함수들
+// =============================================================================
+
+/**
+ * 1단계: GPT-4o-mini로 단계별 분석 (promptTest와 동일)
+ * @param {string} additiveType - 첨가제 타입 (creativity, usability, aesthetics)
+ * @param {string} ideaTitle - 아이디어 제목
+ * @param {string} ideaDescription - 아이디어 설명
+ * @param {string} referenceAnalysis - 레퍼런스 이미지 분석 (aesthetics용, 선택사항)
+ * @returns {Promise<Object>} step별 분석 결과
+ */
+async function analyzeWithGPT(ideaTitle, ideaDescription, additiveType, temperature = 0.7) {
+  // 입력 변수 유효성 검증
+  if (!ideaTitle || typeof ideaTitle !== 'string' || ideaTitle.trim() === '') {
+    console.error('❌ GPT 분석 실패: ideaTitle이 비어있음', ideaTitle);
+    alert('GPT 분석을 위한 아이디어 제목이 누락되었습니다.');
+    throw new Error('아이디어 제목이 누락됨');
+  }
+  
+  if (!ideaDescription || typeof ideaDescription !== 'string' || ideaDescription.trim() === '') {
+    console.error('❌ GPT 분석 실패: ideaDescription이 비어있음', ideaDescription);
+    alert('GPT 분석을 위한 아이디어 설명이 누락되었습니다.');
+    throw new Error('아이디어 설명이 누락됨');
+  }
+  
+  if (!additiveType || typeof additiveType !== 'string') {
+    console.error('❌ GPT 분석 실패: additiveType이 비어있음', additiveType);
+    alert('GPT 분석을 위한 첨가제 타입이 누락되었습니다.');
+    throw new Error('첨가제 타입이 누락됨');
+  }
+  
+  try {
+    console.log('GPT-4o 분석 시작');
+    console.log('📋 아이디어 제목:', ideaTitle);
+    console.log('📄 아이디어 설명:', ideaDescription.substring(0, 100) + '...');
+    console.log('🧪 첨가제 타입:', additiveType);
     
-    // 제품 정보 생성도 실패한 경우
-    if (!improvedInfo) {
-      throw error; // 상위로 에러 전파
-    }
+    const additiveTypeName = getAdditiveTypeName(additiveType);
     
-    // 제품 정보는 성공했지만 이미지만 실패한 경우
+    const prompt = `당신은 ${additiveTypeName} 분석 전문가입니다. 주어진 제품을 분석하고 개선 제안을 제공해주세요.
+
+제품 정보:
+- 제목: "${ideaTitle}"
+- 설명: "${ideaDescription}"
+- 집중 영역: ${additiveTypeName}
+
+${additiveTypeName} 개선에 초점을 맞춘 상세한 4단계 분석을 제공해주세요:
+
+1단계: 현재 상태 분석
+- 이 제품의 현재 ${additiveTypeName} 측면을 분석
+- 구체적인 강점과 약점 파악
+
+2단계: 문제점 식별
+- 어떤 ${additiveTypeName} 문제나 한계가 존재하는가?
+- ${additiveTypeName}과 관련된 사용자 불편 사항은 무엇인가?
+
+3단계: 개선 기회
+- 어떤 ${additiveTypeName} 개선을 만들 수 있는가?
+- 혁신적인 솔루션과 신기술 트렌드 고려
+
+4단계: 구현 전략
+- 이러한 ${additiveTypeName} 개선을 어떻게 구현할 수 있는가?
+- 사용자 경험에 미칠 기대 효과는 무엇인가?
+
+다음 JSON 형식으로 응답해주세요:
+{
+  "step1": {
+    "title": "현재 상태 분석",
+    "description": "상세한 분석 내용"
+  },
+  "step2": {
+    "title": "문제점 식별", 
+    "description": "상세한 분석 내용"
+  },
+  "step3": {
+    "title": "개선 기회",
+    "description": "상세한 분석 내용"
+  },
+  "step4": {
+    "title": "구현 전략",
+    "description": "상세한 분석 내용"
+  }
+}
+
+중요: 유효한 JSON만 응답하세요. 추가 텍스트나 설명은 하지 마세요.`;
+
+    const response = await callGPTTextAPI(prompt, true, temperature, 2048);
+    const result = JSON.parse(response);
+    
+    console.log('GPT-4o 분석 완료:', result);
+    return result;
+    
+  } catch (error) {
+    console.error('GPT-4o 분석 실패:', error);
+    // 기본 구조 반환
     return {
-      ...improvedInfo,
-      imageUrl: null,
-      originalImagePrompt: null,
-      imageGenerationSuccess: false,
-      imageGenerationError: error.message
+      step1: { title: "현재 상태 분석", description: "분석을 진행할 수 없습니다." },
+      step2: { title: "문제점 식별", description: "문제점을 식별할 수 없습니다." },
+      step3: { title: "개선 기회", description: "개선 기회를 찾을 수 없습니다." },
+      step4: { title: "구현 전략", description: "구현 전략을 수립할 수 없습니다." }
     };
   }
 }
+
+/**
+ * 2단계: GPT-4o-mini로 개선된 아이디어 생성 (promptTest와 동일)
+ * @param {string} originalDescription - 원본 설명
+ * @param {string} step1Problems - step1에서 도출한 문제점들
+ * @param {string} step3Analysis - step3의 상세 분석 내용
+ * @param {string} step4Insight - step4의 인사이트
+ * @returns {Promise<{title: string, description: string}>} 개선된 아이디어
+ */
+async function createImprovedIdea(originalDescription, step1Problems, step3Analysis, step4Insight) {
+    // 입력 변수 유효성 검증
+    if (!originalDescription || typeof originalDescription !== 'string' || originalDescription.trim() === '') {
+        console.error('❌ 개선 아이디어 생성 실패: originalDescription이 비어있음', originalDescription);
+        alert('개선 아이디어 생성을 위한 원본 설명이 누락되었습니다.');
+        throw new Error('원본 설명이 누락됨');
+    }
+    
+    if (!step1Problems || typeof step1Problems !== 'string' || step1Problems.trim() === '') {
+        console.error('❌ 개선 아이디어 생성 실패: step1Problems가 비어있음', step1Problems);
+        alert('개선 아이디어 생성을 위한 Step1 문제점 분석이 누락되었습니다.');
+        throw new Error('Step1 문제점이 누락됨');
+    }
+    
+    if (!step3Analysis || typeof step3Analysis !== 'string' || step3Analysis.trim() === '') {
+        console.error('❌ 개선 아이디어 생성 실패: step3Analysis가 비어있음', step3Analysis);
+        alert('개선 아이디어 생성을 위한 Step3 상세 분석이 누락되었습니다.');
+        throw new Error('Step3 분석이 누락됨');
+    }
+    
+    if (!step4Insight || typeof step4Insight !== 'string' || step4Insight.trim() === '') {
+        console.error('❌ 개선 아이디어 생성 실패: step4Insight가 비어있음', step4Insight);
+        alert('개선 아이디어 생성을 위한 GPT 분석 인사이트가 누락되었습니다.');
+        throw new Error('Step4 인사이트가 누락됨');
+    }
+    
+    try {
+        console.log('GPT-4o-mini 개선 아이디어 생성 시작');
+        console.log('📝 원본 설명:', originalDescription.substring(0, 100) + '...');
+        console.log('⚠️ Step1 문제점:', step1Problems.substring(0, 100) + '...');
+        console.log('🔍 Step3 분석:', step3Analysis.substring(0, 100) + '...');
+        console.log('💡 Step4 인사이트:', step4Insight.substring(0, 100) + '...');
+        
+        const prompt = `
+    당신은 제품 문제 개선을 위해 도출된 종합적 분석을 바탕으로 발전된 아이디어를 생성하는 전문가입니다.
+    아래 제공된 단계별 분석을 모두 종합하여 새롭게 개발된 아이디어의 제목과 설명을 생성하는 것이 목표입니다.
+    반드시 JSON 형식으로 제목과 설명을 출력해야 합니다.
+
+    ##분석 단계별 정보 종합:
+
+    ###Step1 - 문제점 평가:
+    "${step1Problems}"
+
+    ###Step3 - 상세 분석 내용:
+    "${step3Analysis}"
+
+    ###Step4 - 최종 개선 인사이트:
+    "${step4Insight}"
+
+    ##원본 제품:
+    "${originalDescription}"
+
+    ##개선된 아이디어 생성 요구사항:
+    1. 종합적 분석 반영: Step1의 문제점, Step3의 상세 분석, Step4의 인사이트를 모두 고려하여 해결책이 반영된 발전된 아이디어를 제시
+    2. 문제점 해결 중심: Step1과 Step3에서 도출한 모든 문제점들이 Step4 인사이트를 바탕으로 디자인에 어떻게 적용되었는지 명확하게 반영
+    3. 논리적 일관성: 각 단계의 분석이 서로 모순되지 않도록 구성
+    4. 구체적 개선점: 추상적 표현보다는 구체적이고 실현 가능한 개선사항 중심으로 설명
+
+    ##출력 형식:
+    - title: 15자 이내, 기능과 가치를 드러내고, 창의적이고 기억에 남도록, 제품 차별화를 드러내세요. 일차원적인 단어 조합과 형용사는 피하세요.
+    - description: 5-6문장(500자), Step1~4의 분석을 종합하여 어떤 문제점들이 어떻게 해결되었는지, 어떤 기능에 특화된 제품이 되었는지, 어떤 강점을 가지게 되었는지 구체적으로 설명하세요.
+
+    ##주의사항:
+    - 과도한 마케팅 표현 금지, 간결하고 구체적으로 작성
+    - Step1~4의 내용에 모순이 발생하지 않도록 생성해야 함
+    - JSON 형식 외에 다른 설명 없이, 백틱이나 점 출력 없이, JSON 스키마 오류 없이 출력
+
+    JSON 스키마:
+    {"title":"","description":""}
+`;
+
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: "You are a concise product naming and concept copy expert." },
+                    { role: "user", content: prompt }
+                ],
+                response_format: { type: "json_object" },
+                temperature: 0.6
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`GPT API 오류: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const text = data.choices?.[0]?.message?.content ?? "";
+        
+        console.log('GPT-4o-mini 개선 아이디어 응답:', text);
+        
+        const result = JSON.parse(text);
+        console.log('개선된 아이디어:', result);
+        
+        return result;
+        
+    } catch (error) {
+        console.error('GPT-4o-mini 개선 아이디어 생성 실패:', error);
+        alert(`개선 아이디어 생성 중 오류가 발생했습니다: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 3단계: GPT-4o-mini로 이미지 수정 프롬프트 생성
+ * @param {Object} improvedIdea - 개선된 아이디어 {title, description}
+ * @param {string} step4Insight - step4의 인사이트
+ * @param {string} additiveType - 첨가제 타입 (선택사항)
+ * @returns {Promise<string>} Gemini용 이미지 수정 프롬프트
+ */
+// 개선된 이미지 프롬프트 생성 함수 - GPT 분석 결과를 구체적으로 반영
+async function createImagePrompt(improvedIdea, step4Insight, additiveType = null) {
+    // 입력 변수 유효성 검증
+    if (!improvedIdea || !improvedIdea.title || !improvedIdea.description) {
+        console.error('❌ 이미지 프롬프트 생성 실패: improvedIdea가 비어있음', improvedIdea);
+        alert('이미지 생성을 위한 개선된 아이디어 데이터가 누락되었습니다.');
+        throw new Error('개선된 아이디어 데이터가 누락됨');
+    }
+    
+    if (!step4Insight || typeof step4Insight !== 'string' || step4Insight.trim() === '') {
+        console.error('❌ 이미지 프롬프트 생성 실패: step4Insight가 비어있음', step4Insight);
+        alert('이미지 생성을 위한 GPT 분석 결과(step4 인사이트)가 누락되었습니다.');
+        throw new Error('Step4 인사이트가 누락됨');
+    }
+    
+    console.log('🎨 GPT를 통한 구체적 시각적 변경 지시 생성 시작:');
+    console.log('  - 제품명:', improvedIdea.title);
+    console.log('  - 제품 설명:', improvedIdea.description.substring(0, 100) + '...');
+    console.log('  - Step4 인사이트:', step4Insight.substring(0, 100) + '...');
+    console.log('  - 첨가제 타입:', additiveType);
+    
+    // GPT에게 step4 인사이트를 구체적인 시각적 변경 지시로 변환 요청
+    let systemPrompt = '';
+    
+    if (additiveType === 'aesthetics') {
+        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS for the product image. Focus on aesthetic changes like:
+- Exact material changes (wood to brushed steel, plastic to glass, etc.)
+- Specific color modifications (change to matte black, add gold accents, etc.)
+- Surface texture changes (smooth to textured, add wood grain pattern, etc.)
+- Pattern or decorative element additions (add geometric patterns, stripes, etc.)
+- Finish modifications (change to chrome finish, apply matte coating, etc.)
+
+Keep the structural form unchanged. Give concrete, actionable visual instructions that can be implemented in image generation.`;
+    } else if (additiveType === 'creativity') {
+        systemPrompt = `You are a creative product designer specializing in innovative form transformations. Based on the TRIZ-based improvement insight, provide BOLD STRUCTURAL MODIFICATION INSTRUCTIONS for the product image. 
+
+CREATIVITY FOCUS - RADICAL FORM CHANGES:
+- Dramatic shape transformations (straight lines to organic curves, rigid to flexible forms)
+- Revolutionary proportion changes (elongate, compress, or restructure entire form)
+- Innovative structural arrangements (asymmetric designs, modular segments, floating elements)
+- Creative material combinations and contrasts
+- Unconventional orientations or configurations
+- Bold geometric reinterpretations
+- Structural innovations that challenge traditional product forms
+
+IMPORTANT: Focus on making the product FUNDAMENTALLY DIFFERENT in appearance and structure. Avoid minor surface changes - aim for transformative design that makes people say "I've never seen anything like this before."
+
+Give concrete instructions for dramatic visual transformation.`;
+    } else if (additiveType === 'usability') {
+        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC FUNCTIONAL MODIFICATION INSTRUCTIONS for the product image. Focus on usability improvements like:
+- Exact ergonomic shape adjustments (add lumbar support curve, widen armrests, etc.)
+- Handle or grip modifications (add rubber grips, change handle angle, etc.)
+- Control interface changes (relocate buttons, add visual indicators, etc.)
+- Size or dimension optimizations (adjust seat height, modify depth, etc.)
+- Adding user-friendly features (add cushioning, improve stability, etc.)
+- Accessibility improvements (add grab bars, improve contrast, etc.)
+
+Give concrete, actionable functional change instructions that improve user experience.`;
+    } else {
+        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC MODIFICATION INSTRUCTIONS for the product image. Focus on practical changes that improve the product while keeping it visually appealing and commercially viable.`;
+    }
+
+    const userPrompt = `Product: ${improvedIdea.title}
+Product Description: ${improvedIdea.description}
+Step 4 Improvement Insight: ${step4Insight}
+
+TASK: Analyze the Step 4 insight and convert it into SPECIFIC VISUAL MODIFICATION INSTRUCTIONS.
+
+ANALYSIS PROCESS:
+1. First, identify what specific improvements are mentioned in the Step 4 insight
+2. Determine which visual/physical aspects of the product need to change
+3. Convert abstract concepts (like "asymmetry", "curves", "ergonomics") into concrete visual changes
+4. Specify exact materials, colors, shapes, dimensions, and positions
+
+STEP 4 INSIGHT ANALYSIS:
+Please analyze the Step 4 insight and identify:
+- What TRIZ principles or design concepts are mentioned?
+- What specific problems does it aim to solve?
+- What physical/visual changes would implement these improvements?
+- How can these changes be visually represented in the product?
+
+CONCRETE VISUAL INSTRUCTIONS:
+Based on your analysis, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS:
+
+Requirements:
+1. Start with "Transform the ${improvedIdea.title.toLowerCase()} by "
+2. Give SPECIFIC instructions about what should be changed, added, or modified
+3. Focus on the most impactful visual changes that align with the additive type
+4. Reference the Step 4 insight to justify each change
+5. Make instructions clear and actionable for image generation AI
+
+For CREATIVITY additive: Focus on dramatic structural changes, not surface modifications
+For AESTHETICS additive: Focus on material, color, and surface refinements  
+For USABILITY additive: Focus on ergonomic and functional improvements
+
+Example analysis and output:
+Step 4 Insight: "비대칭성과 곡선 원리를 적용하여 의자의 안정성과 미적 매력을 향상"
+Analysis: 비대칭성 = 좌우 다른 구조, 곡선 = 직선을 곡선으로 변경
+Output: "Transform the chair by creating asymmetric armrests with different heights, converting straight legs to flowing curved supports, and adding organic curved contours to the backrest design."`;
+
+    try {
+        const response = await fetch(API_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${API_KEY}`,
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt }
+                ],
+                max_tokens: 500,
+                temperature: 0.7
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`GPT API 오류: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const generatedPrompt = data.choices[0].message.content.trim();
+        
+        console.log('✅ GPT가 생성한 구체적 시각적 변경 지시 (Step4 분석 포함):', generatedPrompt);
+        return generatedPrompt;
+        
+    } catch (error) {
+        console.error('❌ GPT 프롬프트 생성 중 오류:', error);
+        
+        // Fallback: 기본 프롬프트 반환
+        const fallbackPrompt = `Using the provided image of the ${improvedIdea.title.toLowerCase()}, modify it according to the following improvements: ${step4Insight}. 
+
+Apply specific visual changes to the product's form, materials, colors, or components as suggested by the improvement insight. Keep the professional photography style and background, but make the enhancements clearly visible while maintaining the product's commercial appeal and realistic appearance.`;
+        
+        console.log('⚠️ Fallback 프롬프트 사용:', fallbackPrompt);
+        return fallbackPrompt;
+    }
+}
+
+// script.js와 완전 동일한 Gemini 이미지 생성 함수
+async function generateImageWithGemini(imagePrompt, originalImageUrl) {
+    try {
+        console.log('Gemini 이미지 생성 시작');
+        
+        // script.js와 동일: 입력 이미지를 base64로 변환
+        if (!originalImageUrl || typeof originalImageUrl !== 'string' || originalImageUrl.trim() === '') {
+            console.error('원본 이미지 URL 검증 실패:', { originalImageUrl, type: typeof originalImageUrl });
+            throw new Error("원본 이미지 URL이 없거나 유효하지 않습니다.");
+        }
+        
+        console.log('이미지 URL 검증 성공:', originalImageUrl.substring(0, 100) + '...');
+        
+        const { base64, mime } = await urlToBase64(originalImageUrl);
+        console.log("input image mime:", mime, "base64 length:", base64.length);
+
+        // script.js와 완전 동일한 Gemini API 요청 구조
+        const body = {
+            contents: [
+                {
+                    parts: [
+                        { text: imagePrompt },
+                        {
+                            inline_data: {
+                                mime_type: mime, 
+                                data: base64    
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Gemini API 호출 (script.js와 동일)
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(body)
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`API 오류: ${response.status} - ${errorData.error?.message || '알 수 없는 오류'}`);
+        }
+
+        const gemData = await response.json();
+        console.log('API 응답 수신:', gemData?.candidates?.[0]?.content?.parts?.length || 0, '개 부분');
+        
+        const parts = gemData?.candidates?.[0]?.content?.parts || [];
+
+        // script.js와 완전 동일한 결과 파싱
+        let resultText = '';
+        let resultImage = '';
+        let outUrl;
+
+        for (const part of parts) {
+            if (part.text) {
+                resultText = part.text;
+            }
+            if (part.inlineData) {
+                resultImage = part.inlineData.data;
+                const outMime = part.inlineData.mimeType || "image/png";
+                outUrl = `data:${outMime};base64,${resultImage}`;
+            }
+        }
+        
+        console.log('파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
+
+        if (!outUrl) {
+            // script.js와 동일한 에러 처리
+            if (resultText) {
+                console.log("이미지 응답이 오지 않았습니다. 모델 응답 텍스트:", resultText);
+            }
+            throw new Error("응답에서 이미지 데이터를 찾지 못했습니다.");
+        }
+
+        console.log('✅ 이미지 생성 성공');
+        return outUrl;
+        
+    } catch (error) {
+        console.error('Gemini 이미지 생성 실패:', error);
+        throw error;
+    }
+}
+
+/**
+ * Gemini로 2개 이미지 동시 입력하여 이미지 생성 (심미성 첨가제 전용)
+ * @param {string} imagePrompt - 이미지 생성 프롬프트
+ * @param {string} originalImageUrl - 원본 아이디어 이미지 URL (입력1)
+ * @param {string} referenceImageUrl - 레퍼런스 이미지 URL (입력2)
+ * @returns {Promise<string>} 생성된 이미지의 base64 data URL
+ */
+async function generateImageWithTwoInputs(imagePrompt, srcImageUrl, refImageUrl, strength = 0.6) {
+    try {
+        console.log('Gemini 2개 이미지 입력 생성 시작 (심미성 첨가제)');
+        console.log('원본 이미지 URL:', srcImageUrl);
+        console.log('레퍼런스 이미지 URL:', refImageUrl);
+        console.log('이미지 프롬프트:', imagePrompt);
+
+        // 두 이미지를 base64로 변환
+        const srcImage = await urlToBase64(srcImageUrl);
+        const refImage = await urlToBase64(refImageUrl);
+
+        // Gemini API 요청 구조 (공식 예제 참고)
+        const requestBody = {
+            contents: [{
+                parts: [
+                    {
+                        inlineData: {
+                            mimeType: srcImage.mime,
+                            data: srcImage.base64
+                        }
+                    },
+                    {
+                        inlineData: {
+                            mimeType: refImage.mime,
+                            data: refImage.base64
+                        }
+                    },
+                    { 
+                        text: await translateGeminiPrompt(`${imagePrompt}
+
+변형 강도 설정: ${getStrengthDescription(strength)}
+
+중요: 오직 이미지만 생성해주세요. 텍스트 사용 금지. 이미지 외에 어떠한 설명도 제공하지 마세요.`) 
+                    }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 8192,
+                candidateCount: 1
+            }
+        };
+
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(requestBody)
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Gemini API 오류: ${response.status} - ${errorData.error?.message || '알 수 없는 오류'}`);
+        }
+
+        const gemData = await response.json();
+        console.log('Gemini API 응답:', gemData);
+        
+        const parts = gemData?.candidates?.[0]?.content?.parts || [];
+
+        // 결과 파싱
+        let resultText = '';
+        let resultImage = '';
+        let outUrl;
+
+        for (const part of parts) {
+            if (part.text) {
+                resultText = part.text;
+            }
+            if (part.inlineData) {
+                resultImage = part.inlineData.data;
+                const outMime = part.inlineData.mimeType || "image/png";
+                outUrl = `data:${outMime};base64,${resultImage}`;
+            }
+        }
+
+        console.log('Gemini 파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
+
+        if (!outUrl) {
+            if (resultText) {
+                console.warn("이미지 응답이 오지 않았습니다. 텍스트 응답만 있음:", resultText.substring(0, 200) + '...');
+            } else {
+                console.warn("이미지와 텍스트 모두 없는 빈 응답");
+            }
+            // 오류를 던지지 않고 null 반환
+            return null;
+        }
+
+        console.log('✅ Gemini 2개 이미지 입력 생성 성공');
+        return outUrl;
+
+    } catch (error) {
+        console.error('❌ Gemini 2개 이미지 입력 생성 실패:', error);
+        alert(`2개 이미지 입력 생성 중 오류가 발생했습니다: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 4단계: Gemini로 이미지 생성 (기본 1개 입력)
+ * @param {string} imagePrompt - 이미지 수정 프롬프트
+ * @param {string} referenceImageUrl - 참조 이미지 URL
+ * @returns {Promise<string>} 생성된 이미지의 base64 URL
+ */
+async function generateImage(imagePrompt, refImageUrl, strength = 0.6) {
+    try {
+        console.log('🤖 Gemini 이미지 생성 시작');
+        console.log('이미지 프롬프트:', imagePrompt);
+        console.log('참조 이미지 URL:', refImageUrl);
+
+        // 참조 이미지를 base64로 변환
+        const { base64, mime } = await urlToBase64(refImageUrl);
+
+        const requestBody = {
+            contents: [{
+                parts: [
+                    { 
+                        text: await translateGeminiPrompt(`${imagePrompt}\n\n Reference Image Corruption Rate Setting: ${getStrengthDescription(strength)}\n\n ##Only the product in the reference image must be printed. Any description other than the image is prohibited. Please print the background in white. Please edit and edit only one view in the reference image according to the previous request.`) 
+                    },
+                    {
+                        inlineData: {
+                            mimeType: mime,
+                            data: base64
+                        }
+                    }
+                ]
+            }],
+            generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 8192,
+                candidateCount: 1
+            }
+        };
+
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(requestBody)
+            }
+        );
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(`Gemini API 오류: ${response.status} - ${errorData.error?.message || '알 수 없는 오류'}`);
+        }
+
+        const gemData = await response.json();
+        console.log('Gemini API 응답:', gemData);
+        
+        const parts = gemData?.candidates?.[0]?.content?.parts || [];
+
+        // 결과 파싱
+        let resultText = '';
+        let resultImage = '';
+        let outUrl;
+
+        for (const part of parts) {
+            if (part.text) {
+                resultText = part.text;
+            }
+            if (part.inlineData) {
+                resultImage = part.inlineData.data;
+                const outMime = part.inlineData.mimeType || "image/png";
+                outUrl = `data:${outMime};base64,${resultImage}`;
+            }
+        }
+
+        console.log('Gemini 파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
+
+        if (!outUrl) {
+            if (resultText) {
+                console.warn("이미지 응답이 오지 않았습니다. 텍스트 응답만 있음:", resultText.substring(0, 200) + '...');
+            } else {
+                console.warn("이미지와 텍스트 모두 없는 빈 응답");
+            }
+            // 오류를 던지지 않고 null 반환
+            return null;
+        }
+
+        console.log('Gemini 이미지 생성 성공');
+        return outUrl;
+
+    } catch (error) {
+        console.error('Gemini 이미지 생성 실패:', error);
+        alert(`이미지 생성 중 오류가 발생했습니다: ${error.message}`);
+        throw error;
+    }
+}
+
+// ✅ 두 스키마 모두 지원하는 헬퍼
+function extractStep4Insight(steps) {
+  if (!steps) return null;
+
+  // 1) 배열 스키마: [{ stepNumber: 4, description: ... }]
+  if (Array.isArray(steps)) {
+    const s4 = steps.find(s => s.stepNumber === 4);
+    return s4?.description || null;
+  }
+
+  // 2) 객체 스키마: { step4: { description: ... } }
+  if (typeof steps === 'object') {
+    if (steps.step4?.description) return steps.step4.description;
+    if (steps.steps && Array.isArray(steps.steps)) {
+      const s4 = steps.steps.find(s => s.stepNumber === 4);
+      return s4?.description || null;
+    }
+  }
+  return null;
+}
+
+// Step1 문제점 추출 함수
+function extractStep1Problems(steps) {
+  if (!steps) return null;
+
+  // 1) 배열 스키마: [{ stepNumber: 1, description: ... }]
+  if (Array.isArray(steps)) {
+    const s1 = steps.find(s => s.stepNumber === 1);
+    return s1?.description || null;
+  }
+
+  // 2) 객체 스키마: { step1: { description: ... } }
+  if (typeof steps === 'object') {
+    if (steps.step1?.description) return steps.step1.description;
+    if (steps.steps && Array.isArray(steps.steps)) {
+      const s1 = steps.steps.find(s => s.stepNumber === 1);
+      return s1?.description || null;
+    }
+  }
+  return null;
+}
+
+// Step3 상세 분석 추출 함수 (첨가제 타입에 따라 다른 구조 처리)
+function extractStep3Analysis(steps, additiveType) {
+  if (!steps) return null;
+
+  let step3Data = null;
+
+  // 1) 배열 스키마: [{ stepNumber: 3, ... }]
+  if (Array.isArray(steps)) {
+    step3Data = steps.find(s => s.stepNumber === 3);
+  }
+  // 2) 객체 스키마: { step3: { ... } }
+  else if (typeof steps === 'object') {
+    if (steps.step3) {
+      step3Data = steps.step3;
+    } else if (steps.steps && Array.isArray(steps.steps)) {
+      step3Data = steps.steps.find(s => s.stepNumber === 3);
+    }
+  }
+
+  if (!step3Data) return null;
+
+  // 첨가제 타입에 따라 다른 구조 처리
+  if (additiveType === 'usability') {
+    // 사용성: descriptions 배열 구조
+    if (step3Data.descriptions && Array.isArray(step3Data.descriptions)) {
+      return step3Data.descriptions.join('\n\n');
+    }
+  } else {
+    // 창의성, 심미성: subSteps 배열 구조
+    if (step3Data.subSteps && Array.isArray(step3Data.subSteps)) {
+      return step3Data.subSteps.map(sub => 
+        `${sub.title}: ${sub.description}`
+      ).join('\n\n');
+    }
+    // 또는 직접 step3a, step3b, step3c 구조
+    else if (steps.step3?.step3a || steps.step3?.step3b || steps.step3?.step3c) {
+      const parts = [];
+      if (steps.step3.step3a) parts.push(`${steps.step3.step3a.title}: ${steps.step3.step3a.description}`);
+      if (steps.step3.step3b) parts.push(`${steps.step3.step3b.title}: ${steps.step3.step3b.description}`);
+      if (steps.step3.step3c) parts.push(`${steps.step3.step3c.title}: ${steps.step3.step3c.description}`);
+      return parts.join('\n\n');
+    }
+  }
+
+  // 기본적으로 description이 있으면 반환
+  return step3Data.description || null;
+}
+
+// 분석 인사이트 텍스트 변환 (스키마 유연 지원)
+function stepsToText(steps) {
+  if (Array.isArray(steps)) {
+    return steps.map(step =>
+      `Step ${step.stepNumber}: ${step.title}\n${step.description || ''}`
+    ).join('\n\n');
+  }
+  // 객체 스키마
+  const s = steps || {};
+  const lines = [];
+  if (s.step1) lines.push(`Step 1: ${s.step1.title}\n${s.step1.description || ''}`);
+  if (s.step2) lines.push(`Step 2: ${s.step2.title}\n${s.step2.description || ''}`);
+  if (s.step3) lines.push(`Step 3: ${s.step3.title || '개선 기회'}\n${
+    s.step3.description ||
+    s.step3.step3title?.title ||
+    Object.values(s.step3).filter(v=>v?.description).map(v=>v.description).join('\n') || ''
+  }`);
+  if (s.step4) lines.push(`Step 4: ${s.step4.title}\n${s.step4.description || ''}`);
+  return lines.join('\n\n');
+}
+
+// improveProduct 내부 일부 교체
+export async function improveProduct(originalTitle, originalDescription, stepsData, additiveType, visionResult = '', srcImageUrl = null, refImageUrl = null, sliderValue = 1) {
+    try {
+        console.log('🚀 promptTest 로직 시작 - 제품 개선 4단계 프로세스');
+        console.log('- 원본 제목:', originalTitle);
+        console.log('- 첨가제 타입:', additiveType);
+        console.log('- 원본 이미지 URL 있음:', !!srcImageUrl);
+
+        // Step별 인사이트 추출 및 유효성 검증 (스키마 유연 지원)
+        const step1Problems = extractStep1Problems(stepsData);
+        const step3Analysis = extractStep3Analysis(stepsData, additiveType);
+        const step4Insight = extractStep4Insight(stepsData);
+        
+        if (!step1Problems || typeof step1Problems !== 'string' || step1Problems.trim() === '') {
+          console.error('❌ Step1 문제점 추출 실패:', { stepsData, step1Problems });
+          alert('GPT 분석 결과에서 Step 1 문제점을 찾을 수 없습니다.\n분석 결과를 다시 확인해주세요.');
+          throw new Error('Step 1 문제점을 찾을 수 없습니다.');
+        }
+        
+        if (!step3Analysis || typeof step3Analysis !== 'string' || step3Analysis.trim() === '') {
+          console.error('❌ Step3 분석 추출 실패:', { stepsData, step3Analysis });
+          alert('GPT 분석 결과에서 Step 3 상세 분석을 찾을 수 없습니다.\n분석 결과를 다시 확인해주세요.');
+          throw new Error('Step 3 분석을 찾을 수 없습니다.');
+        }
+        
+        if (!step4Insight || typeof step4Insight !== 'string' || step4Insight.trim() === '') {
+          console.error('❌ Step4 인사이트 추출 실패:', { stepsData, step4Insight });
+          alert('GPT 분석 결과에서 Step 4 인사이트를 찾을 수 없습니다.\n분석 결과를 다시 확인해주세요.');
+          throw new Error('Step 4 인사이트를 찾을 수 없습니다.');
+        }
+        
+        console.log('✅ Step1 문제점 추출 성공:', step1Problems.substring(0, 100) + '...');
+        console.log('✅ Step3 분석 추출 성공:', step3Analysis.substring(0, 100) + '...');
+        console.log('✅ Step4 인사이트 추출 성공:', step4Insight.substring(0, 100) + '...');
+
+        // 2단계: GPT-4o-mini로 개선된 아이디어 생성 (종합적 분석 반영)
+        const improvedIdea = await createImprovedIdea(originalDescription, step1Problems, step3Analysis, step4Insight);
+        console.log('✅ 개선된 아이디어 생성 완료:', improvedIdea.title);
+        
+        // 3단계: 상세한 이미지 프롬프트 생성 (GPT 분석 결과 반영)
+        const imagePrompt = await createImagePrompt(
+            improvedIdea,
+            step4Insight, 
+            additiveType
+        );
+        console.log('✅ 상세한 이미지 프롬프트 생성 완료');
+        console.log('📝 프롬프트 내용:', imagePrompt);
+
+        // 개선된 제품 정보 생성 시 stepsToText 사용
+        // (아래 improveProductInfo 호출부 등에서 stepsToText(stepsData) 사용 가능)
+        // 예시:
+        // const stepsText = stepsToText(stepsData);
+        // const improvePrompt = `... [분석 인사이트]\n${stepsText}\n\n[스키마]\n{ ... } ...`;
+
+        // 4단계: Gemini로 이미지 생성 (심미성 첨가제는 2개 입력, 나머지는 1개 입력)
+        let finalImageUrl = srcImageUrl;
+        let imageGenerationSuccess = false;
+        let imageGenerationError = null;
+        
+        console.log('🖼️ 이미지 URL 검증:');
+        console.log('- srcImageUrl:', srcImageUrl?.substring(0, 100) + '...');
+        console.log('- srcImageUrl 유효성:', !!srcImageUrl);
+        
+        if (srcImageUrl && typeof srcImageUrl === 'string' && srcImageUrl.trim() !== '') {
+            try {
+                let generatedImageUrl;
+                
+                // script.js와 동일한 단순한 이미지 생성 (모든 첨가제 타입 동일)
+                console.log('🎨 script.js와 동일한 Gemini 이미지 생성');
+                generatedImageUrl = await generateImageWithGemini(imagePrompt, srcImageUrl);
+                
+                // 이미지 생성 결과 처리
+                if (generatedImageUrl) {
+                    finalImageUrl = generatedImageUrl;
+                    imageGenerationSuccess = true;
+                    console.log('✅ Gemini 이미지 생성 완료');
+                } else {
+                    console.warn('⚠️ Gemini 이미지 생성 실패, 원본 이미지 사용');
+                    finalImageUrl = srcImageUrl; // 원본 이미지 사용
+                    imageGenerationSuccess = false;
+                    imageGenerationError = 'Gemini API에서 이미지 대신 텍스트만 응답했습니다.';
+                }
+            } catch (imageError) {
+                console.error('❌ Gemini 이미지 생성 실패:', imageError);
+                imageGenerationError = imageError.message;
+                // 원본 이미지 유지
+            }
+        } else {
+            console.warn('⚠️ 원본 이미지 URL이 없어 이미지 생성을 건너뚜니다.');
+            finalImageUrl = null;
+            imageGenerationError = '원본 이미지 URL이 없어 이미지 생성을 수행할 수 없습니다.';
+        }
+        
+        console.log('🎯 promptTest 로직 완료 - 제품 개선 성공');
+        
+        return {
+            title: improvedIdea.title,
+            description: improvedIdea.description,
+            imageUrl: finalImageUrl,
+            originalImagePrompt: imagePrompt,
+            imageGenerationSuccess,
+            imageGenerationError,
+            generatedBy: imageGenerationSuccess ? 'gemini' : 'none'
+        };
+        
+    } catch (error) {
+        console.error('❌ promptTest 로직 실패 - 제품 개선 오류:', error);
+        alert(`제품 개선 중 오류가 발생했습니다: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * improveProduct 함수의 alias - LabPage.jsx에서 사용하는 함수명과 맞춤
+ * @param {string} originalTitle - 원본 제품 제목
+ * @param {string} originalDescription - 원본 제품 설명
+ * @param {Array} stepsData - GPT 분석 단계 데이터
+ * @param {string} additiveType - 첨가제 타입
+ * @returns {Promise<Object>} 개선된 제품 정보
+ */
+export const improveProductInfo = async (originalTitle, originalDescription, stepsData, additiveType) => {
+    return await improveProduct(originalTitle, originalDescription, stepsData, additiveType);
+};
+
+/**
+ * 제품 태그를 생성하는 함수 (CanvasPage.jsx에서 사용)
+ * @param {string} visionAnalysis - 이미지 분석 결과 (사용하지 않을 수 있음)
+ * @param {string} title - 제품 제목
+ * @param {string} description - 제품 설명
+ * @returns {Promise<string>} 생성된 제품 태그 (예: "#생활용품")
+ */
+export const generateProductTag = async (visionAnalysis, title, description) => {
+  try {
+    console.log('제품 태그 생성 시작:', { title, description });
+    
+    const prompt = `다음 제품 정보를 바탕으로 적절한 제품 태그를 하나만 생성해주세요.
+
+제품 제목: ${title}
+제품 설명: ${description}
+
+규칙:
+1. 한국어로 작성
+2. # 기호로 시작 (예: #생활용품, #가구, #전자제품)
+3. 간단하고 명확한 카테고리명
+4. 하나의 태그만 생성
+5. 특수문자나 공백 없이 한 단어로
+
+응답은 태그만 출력하세요 (설명 없이).`;
+
+    const response = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that generates product tags in Korean."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_tokens: 1500,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`태그 생성 API 요청 실패: ${response.status}`);
+    }
+
+    const data = await response.json();
+    let tag = data.choices[0].message.content.trim();
+    
+    // 태그 형식 정리
+    if (!tag.startsWith('#')) {
+      tag = '#' + tag;
+    }
+    
+    // 공백 제거
+    tag = tag.replace(/\s+/g, '');
+    
+    console.log('생성된 태그:', tag);
+    return tag;
+    
+  } catch (error) {
+    console.error('제품 태그 생성 실패:', error);
+    // 기본 태그 반환
+    return '#생활용품';
+  }
+};
 
 // IFL(랜덤 아이디어 생성) 함수 - GPT-4o 사용
 export const generateRandomIdea = async (userPrompt) => {
@@ -1117,12 +2025,15 @@ export const generateRandomIdea = async (userPrompt) => {
 - 실제로 존재할 법한 현실적이고 유용한 제품을 제안하세요
 
 imagePrompt 작성 시 반드시 다음을 포함하세요:
-- Full product view, completely visible
-- Not cropped, proper framing
-- Professional product photography
+- Professional product rendering
 - Clean white background
-- Studio lighting
+- Studio lighting setup
+- Commercial photography style
+- Premium product visualization
+- Full product visibility
+- High-end design aesthetic
 
+참고: Apple, Samsung, Dyson과 같은 브랜드의 제품 렌더링 스타일을 지향하세요.
 창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
 
     // GPT-4o API 사용 (JSON 강제)
@@ -1135,7 +2046,7 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
     return {
       title: ideaData.title || '새로운 아이디어',
       description: ideaData.description || '혁신적인 제품 아이디어입니다.',
-      imagePrompt: ideaData.imagePrompt || `Creative ${userPrompt} product design, full product view, completely visible, not cropped, proper framing, professional product photography, clean white background, studio lighting`
+      imagePrompt: ideaData.imagePrompt || `Premium ${userPrompt} product rendering, professional studio photography, clean white background, commercial grade visualization, sleek modern design, Apple-style product photography, high-end aesthetic, full product view, studio lighting setup`
     };
     
   } catch (error) {
@@ -1145,7 +2056,7 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
 };
 
 // Stability AI 이미지 생성 함수 (IFL용)
-export const generateImage = async (prompt) => {
+export const generateImageWithStability = async (prompt) => {
   try {
     console.log('Stability AI 이미지 생성 (IFL):', prompt);
     
@@ -1163,20 +2074,27 @@ export const generateImage = async (prompt) => {
       enhancedPrompt = prompt.replace(/\b(phone|iphone|smartphone|monitor|screen|display|computer|laptop|tablet)\b/gi, 'product');
     }
     
-    if (!enhancedPrompt.toLowerCase().includes('full') && !enhancedPrompt.toLowerCase().includes('complete')) {
-      enhancedPrompt = `Full product view, completely visible, ${enhancedPrompt}, not cropped, proper framing, adequate spacing around product`;
+    // 제품 렌더링 필수 키워드 추가
+    if (!enhancedPrompt.toLowerCase().includes('product rendering') && !enhancedPrompt.toLowerCase().includes('product photography')) {
+      enhancedPrompt = `Premium product rendering, ${enhancedPrompt}, clean white background, studio lighting, full product view, centered composition, no background elements`;
     }
+    
+    // 브랜드 스타일 키워드 추가 (랜덤하게 선택)
+    const brandStyles = ['Apple-style', 'Samsung-style', 'Dyson-inspired', 'minimalist modern'];
+    const randomStyle = brandStyles[Math.floor(Math.random() * brandStyles.length)];
+    enhancedPrompt = `${randomStyle} ${enhancedPrompt}`;
     
     if (!STABILITY_API_KEY) {
       throw new Error('Stability AI API 키가 설정되지 않았습니다.');
     }
 
-    // FormData 생성 - Ultra 모델용 고품질 렌더링
+    // FormData 생성 - Ultra 모델용 최고품질 제품 렌더링
     const formData = new FormData();
-    const ultraPrompt = `Professional high-quality product photography, photorealistic rendering, ${enhancedPrompt}, commercial grade image, studio lighting, ultra-sharp details, premium finish, 8K resolution quality`;
+    const ultraPrompt = `Premium product rendering, commercial photography style, ${enhancedPrompt}, clean white background, professional studio lighting, sleek modern design, Apple-style product photography, Samsung-style visualization, Dyson-inspired aesthetic, minimalist design, high-end product visualization, photorealistic materials, ultra-sharp details, commercial grade image, no background elements, centered composition, perfect lighting, 8K resolution quality`;
     formData.append('prompt', ultraPrompt);
     formData.append('aspect_ratio', '1:1');
     formData.append('output_format', 'png');
+    // Ultra 모델에서는 style_preset 지원하지 않으므로 제거
 
     const response = await fetch(STABILITY_API_URL, {
       method: 'POST',
@@ -1189,17 +2107,28 @@ export const generateImage = async (prompt) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Stability AI API 요청 실패: ${response.status} - ${errorText}`);
+      console.error('❌ Stability AI API 오류 상세:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
+      throw new Error(`Stability AI API 요청 실패 (${response.status}): ${errorText.substring(0, 200)}`);
     }
 
-    // 이미지 데이터를 Base64로 변환
+    // 이미지 데이터를 Base64로 변환 (더 안전한 방법)
     const imageBuffer = await response.arrayBuffer();
-    const base64Image = btoa(
-      new Uint8Array(imageBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    const uint8Array = new Uint8Array(imageBuffer);
     
-    console.log('Stability AI 이미지 생성 (IFL) 완료');
-    return `data:image/png;base64,${base64Image}`;
+    // Blob을 사용한 안전한 Base64 변환
+    const blob = new Blob([uint8Array], { type: 'image/png' });
+    const base64Image = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+    
+    console.log('Stability AI 이미지 생성 (IFL) 완료, Base64 길이:', base64Image.length);
+    return base64Image;
     
   } catch (error) {
     console.error('이미지 생성 실패:', error);
@@ -1281,15 +2210,6 @@ export const generateProductImageWithStability_I2I = async (prompt, imageUrl, st
 
     if (!apiResponse.ok) {
       const errorText = await apiResponse.text();
-      console.error('Stability AI img2img API 오류:', errorText);
-      
-      // CORS 오류인 경우 대체 방법 사용
-      if (errorText.includes('CORS') || apiResponse.status === 0) {
-        console.warn('CORS 오류 감지, text-to-image로 대체 생성');
-        // text-to-image로 fallback
-        return await generateProductImageWithStability(enhancedPrompt);
-      }
-      
       throw new Error(`Stability AI img2img API 요청 실패: ${apiResponse.status} - ${errorText}`);
     }
 
@@ -1376,173 +2296,10 @@ export const resizeImage = (imageUrl, maxWidth = 1024, maxHeight = 1024) => {
 // 프록시 서버 CORS 우회 함수들 (개발용)
 // =============================================================================
 
-/**
- * 프록시를 사용한 Firebase Storage 이미지 로드 (CORS 우회 - 개발용)
- * @param {string} firebaseUrl - Firebase Storage HTTPS URL
- * @returns {Promise<string>} base64 data URL
- */
-export async function loadImageViaProxy(firebaseUrl) {
-  try {
-    console.log('프록시를 통한 Firebase Storage 이미지 로드 시작');
-    console.log('원본 Firebase URL:', firebaseUrl.substring(0, 150) + '...');
-    
-    // Firebase Storage URL을 프록시 URL로 변환
-    // 새로운 .firebasestorage.app 도메인과 기존 .googleapis.com 도메인 모두 처리
-    let proxyUrl;
-    if (firebaseUrl.includes('firebasestorage.googleapis.com')) {
-      proxyUrl = firebaseUrl.replace('https://firebasestorage.googleapis.com', PROXY_FIREBASE_STORAGE);
-    } else if (firebaseUrl.includes('.firebasestorage.app')) {
-      // .firebasestorage.app 도메인의 경우 새로운 프록시 사용
-      proxyUrl = firebaseUrl.replace(/^https?:\/\/[^/]+\.firebasestorage\.app/, PROXY_FIREBASE_STORAGE_NEW);
-    } else {
-      throw new Error('지원하지 않는 Firebase Storage URL 형식입니다');
-    }
-    
-    console.log('변환된 프록시 URL:', proxyUrl.substring(0, 100) + '...');
-    
-    const response = await fetch(proxyUrl, {
-      method: 'GET',
-      cache: 'no-store', // 캐시 무시
-      headers: {
-        'Accept': 'image/*'
-      }
-    });
-    
-    console.log('프록시 응답 상태:', response.status, response.statusText);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('프록시 응답 오류:', errorText);
-      throw new Error(`프록시 요청 실패: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-    
-    const blob = await response.blob();
-    console.log('프록시 응답 성공:', blob.size, 'bytes', 'Type:', blob.type);
-    
-    // Blob을 data URL로 변환
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log('프록시 data URL 변환 완료');
-        resolve(reader.result);
-      };
-      reader.onerror = () => {
-        console.error('프록시 FileReader 오류:', reader.error);
-        reject(reader.error);
-      };
-      reader.readAsDataURL(blob);
-    });
-    
-  } catch (error) {
-    console.error('프록시 이미지 로드 실패:', error);
-    console.error('오류 타입:', error.name);
-    console.error('오류 메시지:', error.message);
-    throw error;
-  }
-}
 
-/**
- * 프록시를 사용한 Stability AI 호출 (CORS 우회 - 개발용)
- * @param {FormData} formData - Stability AI 요청 데이터
- * @returns {Promise<ArrayBuffer>} 생성된 이미지 데이터
- */
-export async function callStabilityViaProxy(formData) {
-  try {
-    console.log('프록시를 통한 Stability AI 호출');
-    
-    const response = await fetch(PROXY_STABILITY_API, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${STABILITY_API_KEY}`,
-        'Accept': 'image/*'
-      },
-      body: formData
-    });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`프록시 Stability API 오류: ${response.status} - ${errorText}`);
-    }
 
-    console.log('프록시 Stability AI 성공');
-    return await response.arrayBuffer();
-    
-  } catch (error) {
-    console.error('프록시 Stability AI 실패:', error);
-    throw error;
-  }
-}
 
-/**
- * 개발 환경에서 프록시 사용 여부를 확인하고 적절한 방법으로 이미지 로드
- * @param {string} imageUrl - 이미지 URL
- * @returns {Promise<string>} base64 data URL
- */
-export async function loadImageWithCORSWorkaround(imageUrl) {
-  try {
-    console.log('이미지 로드 시작:', imageUrl.substring(0, 100) + '...');
-    
-    // data URL인 경우 그대로 반환
-    if (imageUrl.startsWith("data:image/")) {
-      console.log('이미 data URL, 그대로 반환');
-      return imageUrl;
-    }
-    
-    // Firebase Storage URL 패턴 체크 (새로운 .firebasestorage.app 도메인 포함)
-    const isFirebaseStorage = /^https?:\/\/(firebasestorage\.googleapis\.com|.*\.firebasestorage\.app)/.test(imageUrl);
-    
-    // 개발 환경이고 Firebase Storage URL인 경우 프록시 시도
-    if (USE_PROXY && isFirebaseStorage) {
-      console.log('개발 환경 - Firebase Storage 프록시 사용 시도');
-      console.log('원본 URL:', imageUrl.substring(0, 150) + '...');
-      try {
-        const result = await loadImageViaProxy(imageUrl);
-        console.log('프록시 성공');
-        return result;
-      } catch (proxyError) {
-        console.warn('프록시 실패, 일반 fetch로 fallback:', proxyError.message);
-        console.warn('프록시 오류 상세:', proxyError);
-      }
-    }
-    
-    // 일반 fetch 방식 (CORS 위험 있음)
-    console.log('일반 fetch 방식 사용');
-    console.log('요청 URL:', imageUrl.substring(0, 100) + '...');
-    
-    const response = await fetch(imageUrl, {
-      cache: 'no-store',
-      mode: 'cors',
-      headers: {
-        'Accept': 'image/*'
-      }
-    });
-    
-    console.log('응답 상태:', response.status, response.statusText);
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-    
-    const blob = await response.blob();
-    console.log('Blob 크기:', blob.size, 'bytes');
-    
-    return await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log('data URL 변환 완료');
-        resolve(reader.result);
-      };
-      reader.onerror = () => {
-        console.error('FileReader 오류:', reader.error);
-        reject(reader.error);
-      };
-      reader.readAsDataURL(blob);
-    });
-    
-  } catch (error) {
-    console.error('이미지 로드 완전 실패:', error);
-    console.error('오류 타입:', error.name);
-    console.error('오류 메시지:', error.message);
-    throw error;
-  }
-}
+
+
+
