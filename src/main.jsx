@@ -16,6 +16,8 @@ const Wrapper = styled.div`
   overflow: hidden;
   box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.5);
   position: relative;
+  margin-left: 250px;
+  margin-top:70px;
 `
 
 import HomePage from './page/HomePage'

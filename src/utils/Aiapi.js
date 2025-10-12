@@ -518,43 +518,42 @@ async function translateGeminiPrompt(koreanPrompt) {
 }
 
 // 슬라이더 값을 Temperature로 변환
-// 슬라이더 0: 많이 넣음 → temperature 1.0 (높은 창의성, 다양성, 적극적 변형)
-// 슬라이더 1: 적당히 → temperature 0.7 (중간 수준)
-// 슬라이더 2: 조금 넣음 → temperature 0.3 (낮은 창의성, 보수적, 소극적 변형)
+// 슬라이더 2: 첨가제 많이 → temperature 1.0 (높은 창의성, 자유로운 변형, 보존율 낮음)
+// 슬라이더 1: 첨가제 적당히 → temperature 0.7 (균형잡힌 변형)
+// 슬라이더 0: 첨가제 적게 → temperature 0.4 (보수적 변형, 보존율 높음)
 const getTemperatureFromSlider = (sliderValue) => {
   const temperatureMap = {
-    0: 0.3,  // 많이 넣음 → 높은 창의성과 다양성
-    1: 0.7,  // 적당히 → 균형잡힌 창의성
-    2: 0.9   // 조금 넣음 → 보수적이고 안정적인 변형
+    0: 0.4,  // 첨가제 적게 → 낮은 창의성, 보존율 높음, 미세한 변형
+    1: 0.7,  // 첨가제 적당히 → 균형잡힌 창의성
+    2: 1.0   // 첨가제 많이 → 높은 창의성, 보존율 낮음, 자유로운 변형
   };
   return temperatureMap[sliderValue] || 0.7;
 };
 
 // 슬라이더 값을 이미지 변형 강도(strength)로 변환
-// 슬라이더 0: 많이 넣음 → strength 0.9 (과감한 변화, 레퍼런스 강하게 반영)
-// 슬라이더 1: 적당히 → strength 0.6 (적당한 변화)
-// 슬라이더 2: 조금 넣음 → strength 0.3 (미세한 변화, 원본 보존)
+// 슬라이더 2: 첨가제 많이 → strength 0.85 (과감한 변화, 창의적 변형)
+// 슬라이더 1: 첨가제 적당히 → strength 0.6 (적당한 변화)
+// 슬라이더 0: 첨가제 적게 → strength 0.35 (미세한 변화, 원본 보존)
 const getStrengthFromSlider = (sliderValue) => {
   const strengthMap = {
-    0: 0.3,  // 많이 넣음 → 강한 변형 (레퍼런스 이미지 강하게 반영)
-    1: 0.6,  // 적당히 → 중간 변형
-    2: 0.9   // 조금 넣음 → 약한 변형 (원본 보존)
+    0: 0.35,  // 첨가제 적게 → 약한 변형, 원본 고수준 보존
+    1: 0.6,   // 첨가제 적당히 → 중간 변형
+    2: 0.85   // 첨가제 많이 → 강한 변형, 창의적 재해석
   };
   return strengthMap[sliderValue] || 0.6;
 };
 
 // strength 값을 설명 텍스트로 변환 (Gemini API 프롬프트용)
-// Adobe Firefly 참조 이미지 강도와 동일한 개념으로 설명
 const getStrengthDescription = (strength) => {
-  if (strength >= 0.8) {
-    // 많이 변형 (0.9) - 슬라이더 0 (많이 넣음)
-    return "HIGH INTENSITY (90% transformation): Apply strong and dramatic changes. For aesthetics: Heavily transfer reference image's colors, materials, and patterns. Transform 70-90% of visual characteristics while maintaining basic structure.";
+  if (strength >= 0.75) {
+    // 많이 변형 (0.85) - 슬라이더 2 (첨가제 많이)
+    return "HIGH INTENSITY (85% transformation): Apply bold and creative changes with high freedom. Transform 70-90% of characteristics while maintaining only the core concept. For aesthetics: Heavily incorporate reference image's style, colors, materials. Prioritize creativity and innovation over preservation.";
   } else if (strength >= 0.5) {
-    // 적당히 변형 (0.6) - 슬라이더 1 (적당히)
-    return "MEDIUM INTENSITY (60% transformation): Apply moderate and balanced changes. For aesthetics: Transfer key elements from reference image with good balance. Transform 40-60% of visual characteristics.";
+    // 적당히 변형 (0.6) - 슬라이더 1 (첨가제 적당히)
+    return "MEDIUM INTENSITY (60% transformation): Apply balanced and moderate changes. Transform 40-60% of characteristics. For aesthetics: Transfer key elements from reference with good balance between preservation and innovation.";
   } else {
-    // 조금 변형 (0.3) - 슬라이더 2 (조금 넣음)
-    return "LOW INTENSITY (30% transformation): Apply subtle and minimal changes. For aesthetics: Lightly hint at reference image's style. Preserve 80-90% of original appearance with only minor aesthetic adjustments.";
+    // 조금 변형 (0.35) - 슬라이더 0 (첨가제 적게)
+    return "LOW INTENSITY (35% transformation): Apply minimal and subtle changes with high preservation. Preserve 80-90% of original characteristics. For aesthetics: Lightly hint at reference style while keeping most of the original design intact. Focus on refinement over transformation.";
   }
 };
 
@@ -769,7 +768,8 @@ const GPT_MINI_PROMPTS = {
     ##Step4: 인사이트 도출
     - title: Step3에서 제시한 OriginIdea의 문제점 3가지를 어떤 TRIZ 원리로 해결할 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
     - description: Step4.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. OriginIdea의 문제점을 해결할 수 있는 TRIZ 원리를 구체적으로 언급하고, 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 600자 이상 작성하세요.
-    - description: Step4.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. OriginIdea의 문제점을 해결할 수 있는 TRIZ 원리를 구체적으로 언급하고, 어떻게 바뀔 수 있는지 가능성을 제시하세요.
+    
+    **중요: 모든 텍스트는 반드시 한국어로만 작성하세요. 일본어, 중국어 등 외국어를 절대 사용하지 마세요. 기술 용어도 한국어로 표현하세요.**
 
     ##OriginIdea:
     title: ${ideaTitle}
@@ -838,6 +838,8 @@ const GPT_MINI_PROMPTS = {
     ##Step4: 심미적 인사이트 도출
     - title: Step3에서 분석한 3가지 속성의 전이를 통해 OriginIdea가 어떻게 심미적으로 개선될 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
     - description: Step4.title에서 1줄로 요약한 내용을 상세히 설명합니다. 형태, 재료, 색상 속성의 종합적 전이를 통해 OriginIdea가 어떻게 시각적으로 발전할 수 있는지 구체적인 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 600자 이상 작성하세요.
+    
+    **중요: 모든 텍스트는 반드시 한국어로만 작성하세요. 일본어, 중국어 등 외국어를 절대 사용하지 마세요. 기술 용어도 한국어로 표현하세요.**
 
     ##OriginIdea:
     title: ${ideaTitle}
@@ -911,6 +913,8 @@ const GPT_MINI_PROMPTS = {
     ##Step4: 인사이트 도출
     - title: Step3에서 OriginIdea를 사용하는 시나리오에서 발견한 문제점을 해결할 수 있는 인사이트를 1줄로 요약한 내용을 구어체로 작성합니다.
     - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요.
+    
+    **중요: 모든 텍스트는 반드시 한국어로만 작성하세요. 일본어, 중국어 등 외국어를 절대 사용하지 마세요. 기술 용어도 한국어로 표현하세요.**
 
     ##OriginIdea:
     title: ${ideaTitle}
@@ -1316,59 +1320,115 @@ async function createImagePrompt(improvedIdea, step4Insight, additiveType = null
     let systemPrompt = '';
     
     if (additiveType === 'aesthetics') {
-        systemPrompt = `You are an expert product designer specializing in aesthetic transformations through style transfer.
+        systemPrompt = `You are an expert at creating image modification prompts for Gemini 2.5 Flash image generation model.
 
-TASK: Based on Step 4 insight, create CLEAR and CONCISE visual modification instructions that transfer aesthetic characteristics from a reference image to the original product.
+TASK: Convert Step 4 aesthetic insight into a DIRECT, EXECUTABLE image modification prompt that Gemini can understand and apply.
 
-FOCUS ON:
-1. FORM CHANGES: Specific shape, proportion, or structural modifications
-2. MATERIAL CHANGES: Surface finish, texture, or material transitions
-3. COLOR CHANGES: Exact color palette, tones, or patterns
+PROMPT FORMAT (like the example):
+"[Action verb] the [specific element] to [desired result]. [Specific visual instruction 1]. [Specific visual instruction 2]. [Specific visual instruction 3]."
 
-RULES:
-- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
-- Focus ONLY on the most important visual changes mentioned in Step 4
-- DO NOT include generic examples or placeholder materials
-- DO NOT mention materials not specified in Step 4 insight
-- Make every instruction ACTIONABLE for image generation AI
+EXAMPLE STRUCTURE:
+"Transform the dress design to incorporate ocean-inspired aesthetics. Apply flowing blue gradient fabric with wave-like patterns. Add delicate white lace details at edges. Modify the silhouette to be more flowing and elegant with tiered layers."
 
-Output format: "Apply [specific change 1]. Modify [specific change 2]. Add [specific change 3]."`;
+KEY RULES:
+1. START with a clear transformation goal (what to change overall)
+2. SPECIFY exact visual changes: colors, materials, textures, patterns, shapes
+3. USE concrete descriptors: "flowing blue gradient" not "nice blue"
+4. MENTION specific elements: fabric, surface, structure, proportions
+5. KEEP total length under 100 words
+6. NO abstract concepts - only visual, tangible changes
+7. Focus on AESTHETIC attributes: color palette, material finish, pattern, texture, form language
+
+DO NOT:
+- Use vague terms like "modern", "innovative", "better"
+- Include reasoning or explanations
+- Add generic examples or placeholder text
+- Mention TRIZ principles or design theory
+
+Output format: One clear paragraph of direct visual modification instructions.`;
     } else if (additiveType === 'creativity') {
-        systemPrompt = `You are a creative product designer specializing in innovative form transformations.
+        systemPrompt = `You are an expert at creating simple, direct image modification prompts for Gemini 2.5 Flash.
 
-TASK: Based on TRIZ-based Step 4 insight, create CLEAR and CONCISE structural modification instructions.
+TASK: Based on TRIZ-based Step 4 insight, create concrete visual transformation instructions that explore NEW MATERIALS and STRUCTURAL INNOVATIONS.
 
-FOCUS ON:
-- Dramatic shape transformations
-- Revolutionary proportion changes  
-- Innovative structural arrangements
-- Bold geometric reinterpretations
+PROMPT FORMAT (simple and direct):
+"Using the provided image of [product], [material change instruction]. [structural change instruction]. [form innovation instruction]."
 
-RULES:
-- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
-- Focus ONLY on the most impactful changes mentioned in Step 4
-- DO NOT include generic examples
-- Make instructions ACTIONABLE for image generation AI
+MATERIAL EXPLORATION PRIORITY:
+- ENCOURAGE diverse material choices: acrylic, glass, metal (steel/aluminum/copper), ceramic, composite materials, carbon fiber, concrete, stone
+- AVOID limiting to wood unless explicitly mentioned in Step 4 insight
+- Mix different materials for innovation (e.g., "transparent acrylic body with brushed metal frame")
 
-Output format: "Transform by [specific change 1]. Add [specific change 2]. Restructure [specific change 3]."`;
+EXAMPLE:
+"Using the provided image of this chair, replace the wooden structure with transparent acrylic panels. Add geometric metal frame in brushed steel. Create modular segmented backrest with adjustable sections."
+
+KEY RULES:
+1. START with "Using the provided image of [product name],"
+2. SPECIFY material transformations (acrylic, glass, metal, ceramic, etc.)
+3. Apply TRIZ-based structural innovations from Step 4
+4. Focus on 2-4 key creative transformations
+5. Total length: 50-80 words
+6. Make it natural and actionable
+7. Maintain PROFESSIONAL PRODUCT QUALITY - no crude or ugly elements
+
+CRITICAL - MATERIAL DIVERSITY:
+- If Step 4 mentions segmentation → Consider transparent/translucent materials
+- If Step 4 mentions asymmetry → Mix contrasting materials (metal + glass)
+- If Step 4 mentions curvature → Use moldable materials (acrylic, metal sheets)
+- DO NOT default to wood - explore modern materials
+
+DO NOT:
+- Mention TRIZ principles by name
+- Use abstract terms without visual detail
+- Create unprofessional or crude-looking modifications
+- Limit to single material type
+
+Output format: Simple, concrete instructions with specific materials and structural changes.`;
     } else if (additiveType === 'usability') {
-        systemPrompt = `You are a product designer specializing in usability improvements.
+        systemPrompt = `You are an expert at creating simple, direct image modification prompts for Gemini 2.5 Flash.
 
-TASK: Based on Step 4 insight, create CLEAR and CONCISE functional modification instructions.
+TASK: Based on Task Analysis Step 4 insight, specify FUNCTIONAL IMPROVEMENTS and ERGONOMIC ENHANCEMENTS while maintaining professional design quality.
 
-FOCUS ON:
-- Ergonomic shape adjustments
-- Control interface improvements
-- Size or dimension optimizations
-- User-friendly feature additions
+PROMPT FORMAT (simple and direct):
+"Using the provided image of [product], [ergonomic improvement 1]. [functional feature addition 2]. [usability enhancement 3]."
 
-RULES:
-- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
-- Focus ONLY on the most important functional changes mentioned in Step 4
-- DO NOT include generic examples
-- Make instructions ACTIONABLE for image generation AI
+USABILITY FOCUS AREAS:
+- Ergonomic handles, grips, or contact points (specify size/shape/material)
+- Control interfaces (buttons, switches, displays) - make them VISIBLE but ELEGANT
+- Access points (doors, compartments, openings) - improve reachability
+- Safety features (guards, indicators, non-slip surfaces)
+- Operational convenience (wheels, handles, adjustable parts)
 
-Output format: "Modify [specific ergonomic change]. Add [specific functional feature]. Adjust [specific dimension]."`;
+DESIGN QUALITY REQUIREMENTS:
+- Functional elements must look PROFESSIONAL and REFINED
+- Buttons/controls should be CLEARLY VISIBLE but AESTHETICALLY INTEGRATED
+- Size modifications must maintain PROPORTIONAL HARMONY
+- Added features should ENHANCE not CLUTTER the design
+
+EXAMPLE:
+"Using the provided image of this desk, add an integrated cable management channel along the back edge. Enlarge the side storage compartment with a soft-close sliding door. Add adjustable height mechanism with sleek control panel on the side."
+
+KEY RULES:
+1. START with "Using the provided image of [product name],"
+2. Specify FUNCTIONAL additions/modifications that solve usability issues
+3. Ensure added elements look PROFESSIONAL and WELL-DESIGNED
+4. Focus on 2-4 key usability improvements
+5. Total length: 50-80 words
+6. Make it natural and actionable
+
+CRITICAL - BALANCE FUNCTION & AESTHETICS:
+- Make controls VISIBLE but not OVERSIZED or CRUDE
+- Integrate features SEAMLESSLY into the design
+- Use REFINED proportions and PROFESSIONAL finishes
+- Prioritize USER EXPERIENCE improvements from Step 4
+
+DO NOT:
+- Mention Task Analysis methodology by name
+- Create oversized, crude, or ugly functional elements
+- Add features that look unprofessional or prototype-like
+- Use vague terms like "better" or "improved"
+
+Output format: Simple instructions specifying elegant functional improvements.`;
     } else {
         systemPrompt = `You are an expert product designer.
 
@@ -1381,20 +1441,28 @@ RULES:
 - Make instructions ACTIONABLE for image generation AI`;
     }
 
-    const userPrompt = `Product: ${improvedIdea.title}
-Product Description: ${improvedIdea.description}
-Step 4 Insight: ${step4Insight}
+    const userPrompt = `PRODUCT INFORMATION:
+Name: ${improvedIdea.title}
+Description: ${improvedIdea.description}
 
-Create SHORT and SPECIFIC visual modification instructions (max 3-4 sentences).
+STEP 4 DESIGN INSIGHT:
+${step4Insight}
 
-CRITICAL RULES:
-1. Extract ONLY the key changes from Step 4 insight
-2. Convert them into DIRECT, ACTIONABLE instructions
-3. NO examples, NO generic descriptions, NO unnecessary words
-4. Start with action verbs: "Apply", "Modify", "Transform", "Add", "Change"
-5. Be SPECIFIC about what changes, not how to think about it
+YOUR TASK:
+Convert the Step 4 insight into a direct image modification prompt that Gemini 2.5 Flash can execute.
 
-Output ONLY the modification instructions, nothing else.`;
+REQUIREMENTS:
+1. Extract the KEY VISUAL CHANGES from Step 4 insight
+2. Convert abstract concepts into CONCRETE visual instructions
+3. Specify EXACT changes: colors (with names/codes), materials (with texture descriptions), shapes (with geometric terms)
+4. Use ACTION VERBS: Transform, Apply, Modify, Add, Change, Restructure
+5. Total length: 80-100 words MAX
+6. Write as ONE continuous paragraph
+
+EXAMPLE OUTPUT STYLE:
+"Transform the chair design to incorporate biophilic elements. Replace solid wooden backrest with vertically arranged bamboo slats (15mm spacing). Apply natural oak finish with visible wood grain texture. Add curved organic armrests flowing from seat to back. Modify leg structure to tripod base with gradual taper from 60mm to 40mm diameter."
+
+Now create the modification prompt based on the product and Step 4 insight above. Output ONLY the prompt, nothing else.`;
 
     try {
         const response = await fetch(API_URL, {
@@ -1437,12 +1505,12 @@ Apply specific visual changes to the product's form, materials, colors, or compo
     }
 }
 
-// script.js와 완전 동일한 Gemini 이미지 생성 함수
+// Gemini 2.5 Flash Image 모델을 사용한 이미지 생성 함수 (공식 문서 기반)
 async function generateImageWithGemini(imagePrompt, originalImageUrl, strength = 0.6) {
     try {
-        console.log('Gemini 이미지 생성 시작');
+        console.log('Gemini 이미지 생성 시작 (gemini-2.5-flash-image-preview)');
         
-        // script.js와 동일: 입력 이미지를 base64로 변환
+        // 입력 이미지 검증
         if (!originalImageUrl || typeof originalImageUrl !== 'string' || originalImageUrl.trim() === '') {
             console.error('원본 이미지 URL 검증 실패:', { originalImageUrl, type: typeof originalImageUrl });
             throw new Error("원본 이미지 URL이 없거나 유효하지 않습니다.");
@@ -1450,10 +1518,51 @@ async function generateImageWithGemini(imagePrompt, originalImageUrl, strength =
         
         console.log('이미지 URL 검증 성공:', originalImageUrl.substring(0, 100) + '...');
         
+        // 이미지를 base64로 변환
         const { base64, mime } = await urlToBase64(originalImageUrl);
         console.log("input image mime:", mime, "base64 length:", base64.length);
 
-        // script.js와 완전 동일한 Gemini API 요청 구조
+        // 강도 설명을 자연어로 구성
+        const strengthGuidance = strength >= 0.75 
+            ? 'Apply BOLD and RADICAL transformations. Completely reimagine the design with dramatic structural changes. Be extremely creative and experimental - this is the maximum transformation level.' 
+            : strength >= 0.5 
+            ? 'Apply noticeable improvements with moderate creative changes. Enhance key features with visible modifications while keeping the general concept.' 
+            : 'Preserve the original design closely. Apply only subtle, refined improvements that enhance quality without major changes.';
+
+        // Gemini 공식 프롬프트 형식: "Using the provided image of [subject], [action instructions]."
+        const formattedPrompt = `Using the provided image of this product, ${imagePrompt}
+
+Transformation Intensity:
+${strengthGuidance}
+
+${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
+- Make DRAMATIC structural changes
+- COMPLETELY transform the design elements
+- Apply RADICAL innovations and unexpected modifications
+- Do NOT worry about preserving original style - INNOVATE BOLDLY
+- This is the HIGHEST transformation level - be EXTREMELY creative
+
+` : strength >= 0.5 ? `MODERATE TRANSFORMATION MODE:
+- Apply noticeable design changes
+- Enhance features with visible modifications
+- Balance between innovation and recognition
+- Make clear improvements that are easy to spot
+
+` : `MINIMAL TRANSFORMATION MODE:
+- Preserve the original design closely
+- Apply only subtle refinements
+- Maintain recognizability as top priority
+- Focus on quality enhancement over changes
+
+`}Technical Requirements:
+- Professional product photography quality
+- Clean white or minimal background
+- Realistic materials, textures, and lighting
+- Focus on visual changes only (no text or descriptions)`;
+
+        console.log('최종 프롬프트:', formattedPrompt);
+
+        // Gemini API 요청 구조 (공식 문서 기반)
         const body = {
             contents: [{
                 parts: [
@@ -1464,11 +1573,7 @@ async function generateImageWithGemini(imagePrompt, originalImageUrl, strength =
                         }
                     },
                     { 
-                        text: await translateGeminiPrompt(`${imagePrompt}
-
-변형 강도 설정: ${getStrengthDescription(strength)}
-
-중요: 오직 이미지만 생성해주세요. 텍스트 사용 금지. 이미지 외에 어떠한 설명도 제공하지 마세요.`) 
+                        text: formattedPrompt
                     }
                 ]
             }],
