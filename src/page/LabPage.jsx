@@ -282,6 +282,8 @@ function LabPage() {
   }, [dropped]);
 
   // 삭제 핸들러 (ItemList에 전달) - ID 기반으로 수정
+  // ⚠️ 각 아이디어는 독립적이므로, 해당 아이디어와 그 experiments만 삭제
+  // 다른 생성물들은 삭제하지 않음 (모든 실험 정보를 자체적으로 가지고 있으므로)
   const handleDeleteItem = async (itemId) => {
     if (!projectId || !itemId) return;
     
@@ -291,19 +293,31 @@ function LabPage() {
       return;
     }
     
-    // const itemIndex = items.findIndex(item => item.id === itemId);
-    
     try {
-      // Firebase에서 아이디어 문서 삭제
+      console.log('🗑️ 아이디어 삭제 시작:', itemId);
+      
+      // 1️⃣ 해당 아이디어의 experiments 서브컬렉션 삭제
+      const experimentsRef = collection(db, "projects", projectId, "ideas", itemId, "experiments");
+      const experimentsSnapshot = await getDocs(experimentsRef);
+      
+      console.log(`📋 삭제할 실험 기록 수: ${experimentsSnapshot.size}`);
+      
+      const deleteExperimentPromises = experimentsSnapshot.docs.map(expDoc => 
+        deleteDoc(doc(db, "projects", projectId, "ideas", itemId, "experiments", expDoc.id))
+      );
+      
+      await Promise.all(deleteExperimentPromises);
+      console.log('✅ 실험 기록 삭제 완료');
+      
+      // 2️⃣ 아이디어 문서 삭제
       await deleteDoc(doc(db, "projects", projectId, "ideas", itemId));
       
-      if (import.meta.env.DEV) {
-        console.log('Firebase에서 아이디어 삭제 완료:', itemId);
-      }
+      console.log('✅ Firebase에서 아이디어 삭제 완료:', itemId);
       
-      // 로컬 state에서도 제거
+      // 3️⃣ 로컬 state에서 제거
       setItems(prev => {
         const newArr = prev.filter(item => item.id !== itemId);
+        
         // 현재 drop된 아이템이 삭제되거나, 모두 삭제되면 dropped 해제
         if (activatedId === itemId || newArr.length === 0) {
           setDropped(false);
@@ -318,7 +332,7 @@ function LabPage() {
         return newArr;
       });
     } catch (error) {
-      console.error('아이디어 삭제 실패:', error);
+      console.error('❌ 아이디어 삭제 실패:', error);
       alert('아이디어 삭제 중 오류가 발생했습니다.');
     }
   };
@@ -518,9 +532,9 @@ function LabPage() {
                   // 실험 상태
                   status: 'processing', // 'processing' -> 'completed'
                   
-                  // 타임스탬프
-                  createdAt: new Date(),
-                  updatedAt: new Date()
+                  // 타임스탬프 (ISO 문자열로 변환)
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
                 };
 
                 // 심미성 첨가제인 경우에만 레퍼런스 이미지 추가
@@ -578,7 +592,11 @@ function LabPage() {
                     currentIdea.title,
                     currentIdea.description,
                     gptResponse.steps || [],
-                    selectedAdditive
+                    selectedAdditive,
+                    visionAnalysis,                    // Vision 분석 결과
+                    currentIdea.imageUrl,              // 원본 아이디어 이미지 URL
+                    selectedAdditive === 'aesthetics' ? referenceImage : null,  // 레퍼런스 이미지 (심미성만)
+                    sliderValue                        // 슬라이더 값 (0: 많이 변형, 1: 적당히, 2: 조금 변형)
                   );
                   
                   if (import.meta.env.DEV) {
@@ -611,6 +629,7 @@ function LabPage() {
                       projectId,
                       ideaId: currentIdea.id,
                       originalIdea: currentIdea,
+                      sourceImageUrl: currentIdea.imageUrl, // 🔥 실험 대상 이미지 URL 전달
                       additiveType: selectedAdditive,
                       additiveIntensity: sliderValue,
                       referenceImage: selectedAdditive === 'aesthetics' ? referenceImage : null,

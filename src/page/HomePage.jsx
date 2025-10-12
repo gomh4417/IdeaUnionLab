@@ -69,7 +69,8 @@ function HomePage() {
                 title: "새 프로젝트",
                 name: "새 프로젝트", // 호환성을 위해 둘 다 저장
                 description: "실험용 프로젝트",
-                createdAt: new Date(),
+                createdAt: new Date().toISOString(), // ISO 문자열로 변환
+                updatedAt: new Date().toISOString()
             });
             
             if (import.meta.env.DEV) {

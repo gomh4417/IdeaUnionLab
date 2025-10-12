@@ -1,7 +1,7 @@
 // CanvasPage.jsx
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getNextIdWithCounter } from '../utils/firebaseCounter';
 import {
@@ -688,11 +688,26 @@ function CanvasPage() {
                 productTag = '#생활용품';
               }
 
-              // 3) 새로운 아이디어 ID
-              const { id: ideaId } = await getNextIdWithCounter(
-                `counters/projects/${projectId}/ideas`,
-                'idea'
-              );
+              // 3) 새로운 아이디어 ID 생성 (idea_0xx 형식)
+              const ideasRef = collection(db, 'projects', projectId, 'ideas');
+              const ideasSnapshot = await getDocs(ideasRef);
+              const existingIds = ideasSnapshot.docs.map(d => d.id);
+              
+              // idea_0xx 형식으로 ID 생성
+              let ideaId = null;
+              for (let i = 1; i <= 999; i++) {
+                const candidateId = `idea_${String(i).padStart(3, '0')}`;
+                if (!existingIds.includes(candidateId)) {
+                  ideaId = candidateId;
+                  break;
+                }
+              }
+
+              if (!ideaId) {
+                throw new Error('새로운 아이디어 ID를 생성할 수 없습니다.');
+              }
+
+              console.log('✅ 생성된 아이디어 ID:', ideaId);
 
               // 4) 이미지 업로드 (단일 try…catch로 정리)
               let finalImageUrl = null;
@@ -742,13 +757,17 @@ function CanvasPage() {
                 id: ideaId,
                 title: title || '제목 없음',
                 description: content || '설명 없음',
-                imageUrl: finalImageUrl || null,
-                visionAnalysis: visionAnalysisResult, // Vision API 분석 결과 저장
+                imageUrl: finalImageUrl || '',
+                visionAnalysis: visionAnalysisResult || '', // null/undefined 방지
                 tags: [productTag],
                 type: 'original',
-                createdAt: new Date(),
+                createdAt: new Date().toISOString(), // ISO 문자열로 변환
+                updatedAt: new Date().toISOString()
               };
+              
+              console.log('💾 Firestore 저장 시작:', ideaData);
               await setDoc(doc(db, 'projects', projectId, 'ideas', ideaId), ideaData);
+              console.log('✅ Firestore 저장 완료:', ideaId);
 
               // 완료
               navigate('/lab', { state: { projectId } });

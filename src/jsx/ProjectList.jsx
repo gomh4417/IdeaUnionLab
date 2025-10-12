@@ -238,7 +238,7 @@ export default function ProjectList() {
       setTimeout(() => {
         setFocusedIndex(index);
         setIsDelayedFocusChanging(false); // 지연된 포커스 변경 완료
-      }, 270);
+      }, 200);
       
       // 짧은 시간 후 scroll-snap 다시 활성화하여 빠른 최종 조정
       setTimeout(() => {

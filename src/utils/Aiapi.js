@@ -191,12 +191,12 @@ async function translateToEnglish(koreanText) {
 /**
  * GPT-4o API로 텍스트 생성 (JSON 강제)
  * @param {string} prompt - 프롬프트 텍스트
- * @param {Object} schema - JSON 스키마 (선택사항)
+ * @param {boolean|Object} forceJson - true면 JSON 모드 강제, 객체면 스키마
  * @param {number} temperature - 온도 (0.0-2.0)
  * @param {number} maxTokens - 최대 토큰 수
  * @returns {Promise<string>} 생성된 텍스트
  */
-async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxTokens = 2048) {
+async function callGPTTextAPI(prompt, forceJson = false, temperature = 0.7, maxTokens = 2048) {
   const headers = {
     "Content-Type": "application/json",
     "Authorization": `Bearer ${API_KEY}`
@@ -207,11 +207,23 @@ async function callGPTTextAPI(prompt, schema = null, temperature = 0.7, maxToken
     temperature,
     max_tokens: maxTokens
   };
+  
+  // JSON 모드 강제 (forceJson이 true이거나 스키마 객체인 경우)
+  if (forceJson) {
+    body.response_format = { type: "json_object" };
+  }
+  
   const response = await fetch(API_URL, {
     method: "POST",
     headers,
     body: JSON.stringify(body)
   });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`GPT API 요청 실패 (${response.status}): ${errorText}`);
+  }
+  
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
@@ -506,34 +518,43 @@ async function translateGeminiPrompt(koreanPrompt) {
 }
 
 // 슬라이더 값을 Temperature로 변환
+// 슬라이더 0: 많이 넣음 → temperature 1.0 (높은 창의성, 다양성, 적극적 변형)
+// 슬라이더 1: 적당히 → temperature 0.7 (중간 수준)
+// 슬라이더 2: 조금 넣음 → temperature 0.3 (낮은 창의성, 보수적, 소극적 변형)
 const getTemperatureFromSlider = (sliderValue) => {
   const temperatureMap = {
-    0: 0.3,
-    1: 0.7,
-    2: 1.0
+    0: 0.3,  // 많이 넣음 → 높은 창의성과 다양성
+    1: 0.7,  // 적당히 → 균형잡힌 창의성
+    2: 0.9   // 조금 넣음 → 보수적이고 안정적인 변형
   };
   return temperatureMap[sliderValue] || 0.7;
 };
 
 // 슬라이더 값을 이미지 변형 강도(strength)로 변환
-// 0: 조금 (0.3 - 원본 이미지 보존), 1: 적당히 (0.6), 2: 많이 (0.9 - 과감한 변화)
+// 슬라이더 0: 많이 넣음 → strength 0.9 (과감한 변화, 레퍼런스 강하게 반영)
+// 슬라이더 1: 적당히 → strength 0.6 (적당한 변화)
+// 슬라이더 2: 조금 넣음 → strength 0.3 (미세한 변화, 원본 보존)
 const getStrengthFromSlider = (sliderValue) => {
   const strengthMap = {
-    0: 0.3,  // 조금 - 원본 이미지 최대한 보존
-    1: 0.6,  // 적당히 - 적당한 변화
-    2: 0.9   // 많이 - 과감한 변화
+    0: 0.3,  // 많이 넣음 → 강한 변형 (레퍼런스 이미지 강하게 반영)
+    1: 0.6,  // 적당히 → 중간 변형
+    2: 0.9   // 조금 넣음 → 약한 변형 (원본 보존)
   };
   return strengthMap[sliderValue] || 0.6;
 };
 
 // strength 값을 설명 텍스트로 변환 (Gemini API 프롬프트용)
+// Adobe Firefly 참조 이미지 강도와 동일한 개념으로 설명
 const getStrengthDescription = (strength) => {
-  if (strength <= 0.4) {
-    return "원본 이미지의 구조와 색상을 최대한 보존하면서 아주 미세한 변화만 적용하세요. 기존 이미지를 90% 이상 유지하고 극히 미묘한 개선만 하세요.";
-  } else if (strength <= 0.7) {
-    return "원본 이미지의 주요 특징을 유지하면서 적당한 수준의 변화를 적용하세요. 기존 이미지를 70-80% 유지하면서 눈에 띄는 개선을 하세요.";
+  if (strength >= 0.8) {
+    // 많이 변형 (0.9) - 슬라이더 0 (많이 넣음)
+    return "HIGH INTENSITY (90% transformation): Apply strong and dramatic changes. For aesthetics: Heavily transfer reference image's colors, materials, and patterns. Transform 70-90% of visual characteristics while maintaining basic structure.";
+  } else if (strength >= 0.5) {
+    // 적당히 변형 (0.6) - 슬라이더 1 (적당히)
+    return "MEDIUM INTENSITY (60% transformation): Apply moderate and balanced changes. For aesthetics: Transfer key elements from reference image with good balance. Transform 40-60% of visual characteristics.";
   } else {
-    return "원본 이미지를 참고하되 과감하고 창의적인 변화를 적용하세요. 기존 이미지를 50-60% 수준으로만 유지하고 dramatic한 개선을 하세요.";
+    // 조금 변형 (0.3) - 슬라이더 2 (조금 넣음)
+    return "LOW INTENSITY (30% transformation): Apply subtle and minimal changes. For aesthetics: Lightly hint at reference image's style. Preserve 80-90% of original appearance with only minor aesthetic adjustments.";
   }
 };
 
@@ -694,7 +715,6 @@ const TRIZ_PRINCIPLES = `
     25. 자가 서비스: 물체 스스로 유익한 작용을 하고 유지보수 할 수 있게 한다.
     26. 복제: 실제 대신 모형이나 복제품을 활용한다.  
     29. 공기 및 유압 사용: 물체의 고체 부분을 기체나 액체로 대체한다. / 기체나 액체 부분은 팽창을 위해 공기나 물을 사용한다.
-    30. 유연한 껍질과 얇은 막: 단단한 재료 대신 얇고 유연한 막을 사용한다.  
     32. 색깔 변화: 물체 또는 환경의 색, 투명도를 바꾼다.
     33. 균질성: 본체와 상호작용하는 주변 물체는 본체와 동일한 재료로 만든다.
     34. 폐기 및 재생: 사용 후 버리거나 회수해 재활용한다.  
@@ -702,7 +722,15 @@ const TRIZ_PRINCIPLES = `
 
 // GPT-4o-mini용 프롬프트 템플릿 
 const GPT_MINI_PROMPTS = {
-  creativity: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+  creativity: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => {
+    // 슬라이더 강도에 따른 개선 정도 지시문
+    const intensityGuidance = sliderValue === 0 
+      ? "**매우 적극적이고 과감한 변형**: 원본 디자인에서 크게 벗어나도 좋습니다. 혁신적이고 파격적인 아이디어를 제시하세요. 기존 개념을 완전히 재구성하고, 새로운 패러다임을 제시하세요. 문제점을 해결하는데 있어 대담하고 창의적인 접근을 하세요."
+      : sliderValue === 1
+      ? "**균형잡힌 개선**: 원본의 핵심 특징을 유지하면서 눈에 띄는 개선을 제시하세요. 실용성과 창의성의 균형을 맞추세요."
+      : "**보수적이고 점진적인 개선**: 원본 디자인을 최대한 유지하면서 미세하고 안정적인 개선만 제시하세요. 기존 구조를 크게 바꾸지 않고 세밀한 부분만 조정하세요.";
+    
+    return `
     당신은 창의적인 발상을 가진 제품 디자이너입니다.
     다음 OriginIdea의 정보를 바탕으로 TRIZ 40가지 발명 원리를 적용하여 인사이트를 추출하는 것이 목표입니다.
     인사이트를 도출할 때 형태, 외형, 심미적으로 발전하는 방향으로 접근하세요. 새로운 컨셉을 제시하는 느낌이면 좋습니다.
@@ -711,6 +739,9 @@ const GPT_MINI_PROMPTS = {
     총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
     출력해주는 말투는" 했어요.", "였어요.", "에요."를 사용하세요.
     각 Step별로 아래 요구사항을 참고하여 최종 json schema에 맞게 JSON 형식으로 작성하세요.
+
+    **🎨 개선 강도 설정 (매우 중요):**
+    ${intensityGuidance}
 
     **중요한 일관성 검증 요구사항**:
     응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
@@ -724,19 +755,20 @@ const GPT_MINI_PROMPTS = {
 
     ##Step1: 평가(총평)
     - title: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요.
-    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다.
+    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다. 최소 400자 이상 작성하세요.
 
     ##Step2: TRIZ 원리 적용
-    - title: "창의성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - title: "창의성 첨가제를 ${sliderValue === 2 ? '많이' : sliderValue === 1 ? '적당히' : '조금'} 넣었어요!" 라고 고정적으로 출력해주세요.
     - description: TRIZ의 원리를 설명하는 단계입니다. TRIZ 발명 원리를 사용하게 되었을때, OriginIdea의 형태나 외형 심미적으로 어떻게 발전될 수 있는지에 대한 가능성을 제시하세요. 너무 자세하게 TRIZ 원리를 적용 했을 때의 가설을 설명하지 말고, 간단하게 소개하세요. ex){OriginIdeaTitle}에 TRIZ를 적용하면, 순차적으로 문제를 분석하고 문제에 따라 TRIZ 원리를 적용하여 디자인을 재구성하게 돼요.
 
     ##Step3: 원리 적용 과정
     - step3a, step3b, step3c: Step1의 평가 내용 및 OriginIdea의 정보를 연결지어 설명해야 합니다. 총 3개의 문제점을 도출해야 하며, 같은 문제점을 언급하지 않도록 주의하세요. step3a, step3b, step3c 외 별도의 항목 추가 금지. 절대로 해결 방법을 제시하지 말고 문제점 및 고민해야 할 과제를 제시하세요.
     - title: Step3의 Step1의 평가 및 OriginIdea의 정보를 바탕으로 문제점을 도출하여 소비자의 입장에서 1줄로 요약한 내용을 구어체로 작성합니다.
-    - description: Step3.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다.
+    - description: Step3.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. 각 description은 최소 400자 이상 작성하세요.
 
     ##Step4: 인사이트 도출
     - title: Step3에서 제시한 OriginIdea의 문제점 3가지를 어떤 TRIZ 원리로 해결할 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
+    - description: Step4.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. OriginIdea의 문제점을 해결할 수 있는 TRIZ 원리를 구체적으로 언급하고, 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 600자 이상 작성하세요.
     - description: Step4.title에서 1줄로 요약한 내용을 상세히 스토리텔링 형식으로 설명합니다. OriginIdea의 문제점을 해결할 수 있는 TRIZ 원리를 구체적으로 언급하고, 어떻게 바뀔 수 있는지 가능성을 제시하세요.
 
     ##OriginIdea:
@@ -749,23 +781,34 @@ const GPT_MINI_PROMPTS = {
 
     ##JSON schema:
     {
-    "step1": {"title": "", "description": "300자 이상"},
+    "step1": {"title": "", "description": "400자 이상"},
     "step2": {"title": "", "description": ""},
     "step3": {
-        "step3a": { "title": "", "description": "300자 이상" },
-        "step3b": { "title": "", "description": "300자 이상" },
-        "step3c": { "title": "", "description": "300자 이상" }
+        "step3a": { "title": "", "description": "400자 이상" },
+        "step3b": { "title": "", "description": "400자 이상" },
+        "step3c": { "title": "", "description": "400자 이상" }
     },
-    "step4": {"title": "", "description": "500자 이상"}
-    }`,
+    "step4": {"title": "", "description": "600자 이상"}
+    }`;
+  },
 
-  aesthetics: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+  aesthetics: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => {
+    const intensityGuidance = sliderValue === 2 
+      ? "**매우 적극적이고 과감한 스타일 전이**: 레퍼런스 이미지의 디자인 요소를 대담하게 적용하세요. 원본의 형태, 재료, 색상을 혁신적으로 변형하고, 레퍼런스의 특징을 강하게 반영하세요."
+      : sliderValue === 1
+      ? "**균형잡힌 스타일 조화**: 원본과 레퍼런스의 특징을 적절히 융합하세요. 조화로운 개선을 제시하세요."
+      : "**보수적이고 은은한 스타일 적용**: 원본의 특징을 최대한 유지하면서 레퍼런스의 요소를 미세하게만 적용하세요.";
+    
+    return `
     당신은 제품 디자인에서 심미성을 중심적으로 평가하는 전문가이며, 사례 기반 추론(Case-Based Reasoning) 방법론을 바탕으로 응답합니다.
     다음 OriginIdea의 정보와 레퍼런스 이미지 분석을 바탕으로 사례 기반 추론을 적용하여 인사이트를 추출하는 것이 목표입니다.
     인사이트를 도출할 때 형태, 재료, 색상 등의 속성을 분석하고 OriginIdea에 전이(Transfer)하는 방향으로 접근하세요.
     설명은 최대한 자세히 작성하여 리포트의 분량으로 응답하세요.
     OriginIdeaTitle은 "${ideaTitle}" 을 의미합니다.
     총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
+
+    **🎨 개선 강도 설정 (매우 중요):**
+    ${intensityGuidance}
 
    **중요한 일관성 검증 요구사항**:
     응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
@@ -781,20 +824,20 @@ const GPT_MINI_PROMPTS = {
 
     ##Step1: 평가(총평)
     - title: OriginIdea의 현재 심미적 특징과 한계점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요.
-    - description: OriginIdea의 심미적 장점과 문제점을 객관적으로 분석하여 평가를 상세히 설명하세요. 형태, 색상, 재질 측면에서의 한계점을 중점적으로 찾아내는 것이 중요합니다.
+    - description: OriginIdea의 심미적 장점과 문제점을 객관적으로 분석하여 평가를 상세히 설명하세요. 형태, 색상, 재질 측면에서의 한계점을 중점적으로 찾아내는 것이 중요합니다. 최소 400자 이상 작성하세요.
 
     ##Step2: 사례 기반 추론 적용
-    - title: "심미성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - title: "심미성 첨가제를 ${sliderValue === 2 ? '많이' : sliderValue === 1 ? '적당히' : '조금'} 넣었어요!" 라고 고정적으로 출력해주세요.
     - description: 사례 기반 추론 방법론을 설명하는 단계입니다. 레퍼런스 이미지의 우수한 디자인 사례를 어떻게 OriginIdea에 적용할 수 있는지에 대한 가능성을 제시하세요. ex) ${ideaTitle}에 사례 기반 추론을 적용하면, 레퍼런스 이미지의 디자인 속성을 형태, 재료, 색상 단위로 구조화하여 분석하고, 기존 아이디어와의 유사도를 분석하여 적용 가능한 요소를 전이하는 방식이에요.
 
     ##Step3: 속성 분석 및 전이 과정
     - step3a, step3b, step3c: 레퍼런스 이미지와 OriginIdea를 비교 분석해야 합니다. 3가지 핵심 속성(형태, 재료, 색상)별로 분석하되, 각각 다른 속성을 다뤄야 합니다. step3a, step3b, step3c 외 별도의 항목 추가 금지. 해결방법을 제시하지 말고 속성별 차이점과 전이 가능성을 분석하세요.
     - title: 레퍼런스 이미지의 우수한 디자인 속성이 OriginIdea에 어떻게 적용될 수 있는지 소비자 관점에서 1줄로 요약한 내용을 구어체로 작성합니다. 레퍼런스의 속성이 OriginIdea의 단점을 어떻게 보완하는지 작성하면 됩니다.
-    - description: Step3.title에서 1줄로 요약한 내용을 상세히 분석하여 설명합니다. 형태/재료/색상 중 해당 step.title에 집중하여 설명하세요.
+    - description: Step3.title에서 1줄로 요약한 내용을 상세히 분석하여 설명합니다. 형태/재료/색상 중 해당 step.title에 집중하여 설명하세요. 각 description은 최소 400자 이상 작성하세요.
 
     ##Step4: 심미적 인사이트 도출
     - title: Step3에서 분석한 3가지 속성의 전이를 통해 OriginIdea가 어떻게 심미적으로 개선될 수 있을지 1줄로 요약한 내용을 구어체로 작성합니다.
-    - description: Step4.title에서 1줄로 요약한 내용을 상세히 설명합니다. 형태, 재료, 색상 속성의 종합적 전이를 통해 OriginIdea가 어떻게 시각적으로 발전할 수 있는지 구체적인 가능성을 제시하세요.
+    - description: Step4.title에서 1줄로 요약한 내용을 상세히 설명합니다. 형태, 재료, 색상 속성의 종합적 전이를 통해 OriginIdea가 어떻게 시각적으로 발전할 수 있는지 구체적인 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 600자 이상 작성하세요.
 
     ##OriginIdea:
     title: ${ideaTitle}
@@ -803,24 +846,31 @@ const GPT_MINI_PROMPTS = {
     ##레퍼런스 이미지 분석:
     ${referenceAnalysis}
 
-    ##사례 기반 추론 방법론은: 
+    ##사례 기반 추론 방법론 이론 정보: ${CBR_ANALYSIS_THEORY} 
 
     ##JSON 형태 외 다른 설명 금지, 백틱이나 점 출력 금지, JSON 스키마 오류 없이 출력
 
     ##JSON schema:
     {
-    "step1": {"title": "", "description": "300자 이상"},
+    "step1": {"title": "", "description": "400자 이상"},
     "step2": {"title": "", "description": ""},
     "step3": {
-        "step3a": { "title": "", "description": "300자 이상" },
-        "step3b": { "title": "", "description": "300자 이상" },
-        "step3c": { "title": "", "description": "300자 이상" }
+        "step3a": { "title": "", "description": "400자 이상" },
+        "step3b": { "title": "", "description": "400자 이상" },
+        "step3c": { "title": "", "description": "400자 이상" }
     },
-    "step4": {"title": "", "description": "500자 이상"}
-    }
-    `,
+    "step4": {"title": "", "description": "600자 이상"}
+    }`;
+  },
 
-  usability: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => `
+  usability: (ideaTitle, ideaDescription, referenceAnalysis, sliderValue) => {
+    const intensityGuidance = sliderValue === 2 
+      ? "**매우 적극적이고 혁신적인 사용성 개선**: 사용자 경험을 완전히 재설계하세요. 기존 사용 방식을 과감하게 변경하고, 혁신적인 기능을 추가하세요. 불편함을 근본적으로 해결하는 파격적인 제안을 하세요."
+      : sliderValue === 1
+      ? "**실용적이고 현실적인 개선**: 기존 사용 방식을 크게 바꾸지 않으면서 눈에 띄는 개선을 제시하세요."
+      : "**보수적이고 점진적인 개선**: 현재 사용 방식을 최대한 유지하면서 작은 불편함만 해결하세요.";
+    
+    return `
     당신은 제품의 사용성(UX)을 테스트하는 전문 제품 디자이너입니다.
     다음 OriginIdea의 정보를 바탕으로 과제분석법(Task analysis)을 적용하여 인사이트를 추출하는 것이 목표입니다.
     인사이트를 도출할 때 기능, 요소, 차별 포인트를 발전하는 방향으로 접근하세요.
@@ -829,6 +879,9 @@ const GPT_MINI_PROMPTS = {
     총 4단계로 구성되어 있고, 각 Step별 title과 description을 JSON 형식으로 출력해야 합니다.
     출력해주는 말투는" 했어요.", "였어요.", "에요."를 사용하세요.
     각 Step별로 아래 요구사항을 참고하여 최종 json schema에 맞게 JSON 형식으로 작성하세요.
+
+    **🎨 개선 강도 설정 (매우 중요):**
+    ${intensityGuidance}
 
     **중요한 일관성 검증 요구사항**:
     응답하기 전에 반드시 다음 사항들을 5번 이상 교차 검증하세요:
@@ -842,22 +895,22 @@ const GPT_MINI_PROMPTS = {
 
     ##Step1: 평가(총평)
     - title: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 평가한 Step1의 Description의 내용을 1줄로 요약하세요. 문제점이 여러 개가 있다면, 그 중 가장 중요한 문제점을 1개만 제시하세요.
-    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다.
+    - description: OriginIdea의 장점이나 문제점을 객관적으로 분석하여 OriginIdea의 평가를 상세히 설명하세요. 다만 긍정적인 평가보다 부정적인 문제점을 찾아내는 것이 중요합니다. 최소 400자 이상 작성하세요.
 
     ##Step2: 과제분석법 적용
     주의할 점: ex) 예시와 똑같은 구조는 최대한 피하세요. OriginIdea의 특성에 맞게 자연스럽게 작성하세요.
-    - title: "사용성 첨가제를 ${sliderValue === 0 ? '조금' : sliderValue === 1 ? '적당히' : '많이'} 넣었어요!" 라고 고정적으로 출력해주세요.
+    - title: "사용성 첨가제를 ${sliderValue === 2 ? '많이' : sliderValue === 1 ? '적당히' : '조금'} 넣었어요!" 라고 고정적으로 출력해주세요.
     - description: 과제 분석법을 설명하는 단계입니다. 과제 분석법을 사용하게 되었을때, OriginIdea의 기능이나 요소, 차별 포인트가 어떻게 발전될 수 있는지에 대한 가능성을 제시하세요. 너무 자세하게 과제 분석법을 적용 했을 때의 가설을 설명하지 말고, 간단하게 소개하세요. ex){OriginIdeaTitle}에 과제 분석법을 적용하면, 사용자가 실제로 이 제품을 사용할 때 어떤 순서로 어떤 행동을 하는지를 1단계부터 5단계까지 시나리오 흐름으로 분해한 뒤, 각 단계에서 발생할 수 있는 문제점을 찾아내고, 이를 중심으로 기능적 개선점을 도출하는 방식이에요.
 
     ##Step3: 과제 분석법 적용 과정
     주의할 점: ex) 예시와 똑같은 구조는 최대한 피하세요. OriginIdea의 특성에 맞게 자연스럽게 작성하세요.
     - step3a, step3b, step3c, step3d, step3e: Step1의 평가 내용 및 OriginIdea의 정보를 연결지어 설명해야 합니다. 총 5개의 시나리오를 도출해야 하며, OriginIdea를 사용하는 시나리오의 흐름이 자연스럽게 이어지도록 주의하세요. step3a, step3b, step3c, step3d, step3e 외 별도의 항목 추가 금지. OriginIdea를 사용하는 사용자의 상황을 시나리오 형식으로 구성하여 상황 별 문제점을 제시하세요. 절대로 해결 방법을 제시하지 말고 문제점 및 고민해야 할 과제를 제시하세요.
     - step3title: Step3의 description에 제시한 모든 상황을 종합하여 OriginIdea을 사용하는 소비자의 감정이나 느낌을 1줄로 요약한 내용을 구어체로 작성합니다. 너무 진부하고 1차원적인 내용으로 요약하는 것을 피하세요. 문제점이 여러 개가 있다면, 그 중 가장 중요한 문제점을 1개만 제시하세요. ex) {OriginIdeaTitle}을 사용하면서 앉는게 불편했어요.
-    - description: 단계별 상황에 따라 사용자의 입장에서 느낀 단점이나 불편함을 상세히 묘사하며 설명합니다. ex) 책을 꺼내고 나서 주변을 둘러보며 읽을 책을 고르려 했는데, 어떤 주제인지 알 수 없고, 정리 기준이 없어 오래 머물기 어려웠어요.
+    - description: 단계별 상황에 따라 사용자의 입장에서 느낀 단점이나 불편함을 상세히 묘사하며 설명합니다. 각 description은 최소 500자 이상 작성하세요. ex) 책을 꺼내고 나서 주변을 둘러보며 읽을 책을 고르려 했는데, 어떤 주제인지 알 수 없고, 정리 기준이 없어 오래 머물기 어려웠어요.
 
     ##Step4: 인사이트 도출
     - title: Step3에서 OriginIdea를 사용하는 시나리오에서 발견한 문제점을 해결할 수 있는 인사이트를 1줄로 요약한 내용을 구어체로 작성합니다.
-    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요.
+    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요.
 
     ##OriginIdea:
     title: ${ideaTitle}
@@ -869,19 +922,19 @@ const GPT_MINI_PROMPTS = {
 
     ##JSON schema:
     {
-    "step1": {"title": "", "description": "300자 이상"},
+    "step1": {"title": "", "description": "400자 이상"},
     "step2": {"title": "", "description": ""},
     "step3": {
         "step3title": { "title": "" },
-        "step3a": { "description": "400자 이상" },
-        "step3b": { "description": "400자 이상" },
-        "step3c": { "description": "400자 이상" },
-        "step3d": { "description": "400자 이상" },
-        "step3e": { "description": "400자 이상" }
+        "step3a": { "description": "500자 이상" },
+        "step3b": { "description": "500자 이상" },
+        "step3c": { "description": "500자 이상" },
+        "step3d": { "description": "500자 이상" },
+        "step3e": { "description": "500자 이상" }
     },
-    "step4": {"title": "", "description": "600자 이상"}
-    }
-    `
+    "step4": {"title": "", "description": "700자 이상"}
+    }`;
+  }
 };
 
 // =============================================================================
@@ -933,6 +986,10 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
     console.log('첨가제 타입:', additiveType);
     console.log('슬라이더 값:', sliderValue);
     
+    // 슬라이더 값을 temperature로 변환
+    const temperature = getTemperatureFromSlider(sliderValue);
+    console.log('계산된 temperature:', temperature);
+    
     const prompt = GPT_MINI_PROMPTS[additiveType](ideaTitle, ideaDescription, referenceAnalysis, sliderValue)
     
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -947,7 +1004,8 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
           { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
           { role: "user", content: prompt }
         ],
-        temperature: 0.7
+        max_tokens: 4096,  // 2048 → 4096으로 증가 (더 자세한 응답)
+        temperature: temperature  // 슬라이더 값에 따른 동적 temperature
       })
     });
     
@@ -1199,6 +1257,7 @@ async function createImprovedIdea(originalDescription, step1Problems, step3Analy
                     { role: "system", content: "You are a concise product naming and concept copy expert." },
                     { role: "user", content: prompt }
                 ],
+                max_tokens: 3000,  // 1500 → 3000으로 증가 (더 자세한 설명)
                 response_format: { type: "json_object" },
                 temperature: 0.6
             })
@@ -1257,14 +1316,43 @@ async function createImagePrompt(improvedIdea, step4Insight, additiveType = null
     let systemPrompt = '';
     
     if (additiveType === 'aesthetics') {
-        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS for the product image. Focus on aesthetic changes like:
-- Exact material changes (wood to brushed steel, plastic to glass, etc.)
-- Specific color modifications (change to matte black, add gold accents, etc.)
-- Surface texture changes (smooth to textured, add wood grain pattern, etc.)
-- Pattern or decorative element additions (add geometric patterns, stripes, etc.)
-- Finish modifications (change to chrome finish, apply matte coating, etc.)
+        systemPrompt = `You are an expert product designer specializing in aesthetic transformations through style transfer and case-based reasoning.
 
-Keep the structural form unchanged. Give concrete, actionable visual instructions that can be implemented in image generation.`;
+AESTHETICS FOCUS - COMPREHENSIVE VISUAL TRANSFORMATION:
+Based on the Case-Based Reasoning (CBR) approach in the Step 4 insight, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS that transfer aesthetic characteristics from a reference design to the original product.
+
+CRITICAL: The Step 4 insight describes how to transfer aesthetic attributes (form, material, color) from a reference design. Your task is to convert these abstract transfer concepts into concrete visual instructions.
+
+AESTHETIC TRANSFORMATION CATEGORIES:
+
+1. FORM ATTRIBUTES (형태 속성):
+   - Overall shape and silhouette changes
+   - Proportional adjustments (length, width, height ratios)
+   - Curves vs. straight lines
+   - Symmetry vs. asymmetry
+   - Edge treatments (sharp, rounded, beveled)
+   - Structural details and contours
+
+2. MATERIAL ATTRIBUTES (재료 속성):
+   - Material type changes (wood → metal, plastic → glass, fabric → leather)
+   - Surface treatments (polished, brushed, textured, smooth)
+   - Finish quality (glossy, matte, satin, metallic)
+   - Material combinations and contrasts
+   - Visible craftsmanship details
+
+3. COLOR ATTRIBUTES (색상 속성):
+   - Primary color palette
+   - Color combinations and schemes
+   - Tone and saturation levels
+   - Gradients or solid colors
+   - Accent colors and highlights
+   - Color blocking patterns
+
+IMPORTANT: 
+- Analyze the Step 4 insight to identify which specific attributes should be transferred
+- Provide concrete, actionable instructions for each attribute category
+- The transformation should be comprehensive and visible
+- Maintain professional product photography quality`;
     } else if (additiveType === 'creativity') {
         systemPrompt = `You are a creative product designer specializing in innovative form transformations. Based on the TRIZ-based improvement insight, provide BOLD STRUCTURAL MODIFICATION INSTRUCTIONS for the product image. 
 
@@ -1345,7 +1433,7 @@ Output: "Transform the chair by creating asymmetric armrests with different heig
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userPrompt }
                 ],
-                max_tokens: 500,
+                max_tokens: 1000,  // 500 → 1000으로 증가 (더 상세한 이미지 프롬프트)
                 temperature: 0.7
             })
         });
@@ -1489,7 +1577,37 @@ async function generateImageWithTwoInputs(imagePrompt, srcImageUrl, refImageUrl,
         const srcImage = await urlToBase64(srcImageUrl);
         const refImage = await urlToBase64(refImageUrl);
 
-        // Gemini API 요청 구조 (공식 예제 참고)
+        // Gemini API 요청 구조 - 심미성 첨가제 전용 (레퍼런스 스타일 전이)
+        const aestheticsPrompt = `TASK: Transform the product in the FIRST image by applying the aesthetic style and characteristics from the SECOND image.
+
+IMAGE INPUT INSTRUCTIONS:
+- FIRST IMAGE: Original product to be transformed (maintain structure and form)
+- SECOND IMAGE: Reference style to apply (extract colors, materials, patterns, textures)
+
+STYLE TRANSFER INTENSITY: ${getStrengthDescription(strength)}
+${strength <= 0.3 ? '→ Apply reference style SUBTLY. Keep original aesthetics mostly intact, add only hints of reference style.' : 
+  strength <= 0.6 ? '→ Apply reference style MODERATELY. Balance between original and reference aesthetics.' :
+  '→ Apply reference style STRONGLY. Transform aesthetics significantly to match reference image.'}
+
+SPECIFIC INSTRUCTIONS FOR AESTHETIC TRANSFORMATION:
+${imagePrompt}
+
+AESTHETIC TRANSFORMATION REQUIREMENTS:
+1. KEEP STRUCTURE: Maintain the original product's structure, form, and proportions from the first image
+2. TRANSFER AESTHETICS: Apply the following from the second image:
+   - Color palette and color combinations
+   - Material appearance (wood grain, metal finish, fabric texture, etc.)
+   - Surface treatments (glossy, matte, brushed, polished)
+   - Pattern or decorative elements
+   - Overall visual style and mood
+3. NATURAL INTEGRATION: Make the aesthetic changes look natural and well-integrated
+4. PROFESSIONAL QUALITY: Maintain high-quality product photography standards
+5. WHITE BACKGROUND: Keep clean white background for professional presentation
+
+CRITICAL: The result should be the FIRST image's product transformed to have the SECOND image's aesthetic characteristics. You must apply the "refImageUrl" image style to the "srcImage" image included in "inlineData". The shape, material, color, etc. of "refImageUrl" must be reflected in "srcImage".
+
+OUTPUT: Generate ONLY the transformed product image. No text, no explanations, just the image.`;
+
         const requestBody = {
             contents: [{
                 parts: [
@@ -1506,11 +1624,7 @@ async function generateImageWithTwoInputs(imagePrompt, srcImageUrl, refImageUrl,
                         }
                     },
                     { 
-                        text: await translateGeminiPrompt(`${imagePrompt}
-
-변형 강도 설정: ${getStrengthDescription(strength)}
-
-중요: 오직 이미지만 생성해주세요. 텍스트 사용 금지. 이미지 외에 어떠한 설명도 제공하지 마세요.`) 
+                        text: await translateGeminiPrompt(aestheticsPrompt)
                     }
                 ]
             }],
@@ -1787,12 +1901,27 @@ function stepsToText(steps) {
 }
 
 // improveProduct 내부 일부 교체
-export async function improveProduct(originalTitle, originalDescription, stepsData, additiveType, visionResult = '', srcImageUrl = null) {
+export async function improveProduct(
+  originalTitle, 
+  originalDescription, 
+  stepsData, 
+  additiveType, 
+  visionResult = '', 
+  srcImageUrl = null,
+  referenceImageUrl = null,
+  sliderValue = 1
+) {
     try {
-        console.log(' 제품 개선 4단계 프로세스');
+        console.log('🎨 제품 개선 4단계 프로세스');
         console.log('- 원본 제목:', originalTitle);
         console.log('- 첨가제 타입:', additiveType);
         console.log('- 원본 이미지 URL 있음:', !!srcImageUrl);
+        console.log('- 레퍼런스 이미지 URL 있음:', !!referenceImageUrl);
+        console.log('- 슬라이더 값:', sliderValue);
+        
+        // 슬라이더 값을 이미지 변형 강도(strength)로 변환
+        const strength = getStrengthFromSlider(sliderValue);
+        console.log('- 계산된 strength:', strength);
         
         // 사용하지 않는 매개변수 방지
         void visionResult;
@@ -1851,38 +1980,57 @@ export async function improveProduct(originalTitle, originalDescription, stepsDa
         console.log('이미지 URL 검증:');
         console.log('- srcImageUrl:', srcImageUrl?.substring(0, 100) + '...');
         console.log('- srcImageUrl 유효성:', !!srcImageUrl);
+        console.log('- referenceImageUrl:', referenceImageUrl?.substring(0, 100) + '...');
+        console.log('- referenceImageUrl 유효성:', !!referenceImageUrl);
         
         if (srcImageUrl && typeof srcImageUrl === 'string' && srcImageUrl.trim() !== '') {
             try {
                 let generatedImageUrl;
                 
-                // script.js와 동일한 단순한 이미지 생성 (모든 첨가제 타입 동일)
-                console.log('Gemini 이미지 생성');
-                generatedImageUrl = await generateImageWithGemini(imagePrompt, srcImageUrl);
+                // 🎨 심미성 첨가제: 2개 이미지 입력 (원본 + 레퍼런스)
+                if (additiveType === 'aesthetics' && referenceImageUrl && typeof referenceImageUrl === 'string' && referenceImageUrl.trim() !== '') {
+                    console.log('🎨 심미성 첨가제: 2개 이미지 입력으로 Gemini 호출');
+                    console.log('  - 원본 이미지:', srcImageUrl.substring(0, 100) + '...');
+                    console.log('  - 레퍼런스 이미지:', referenceImageUrl.substring(0, 100) + '...');
+                    console.log('  - 이미지 변형 강도 (strength):', strength);
+                    
+                    generatedImageUrl = await generateImageWithTwoInputs(
+                        imagePrompt, 
+                        srcImageUrl, 
+                        referenceImageUrl,
+                        strength
+                    );
+                } 
+                // ⚡ 기타 첨가제: 1개 이미지 입력 (원본만)
+                else {
+                    console.log('⚡ 기본 모드: 1개 이미지 입력으로 Gemini 호출');
+                    console.log('  - 이미지 변형 강도 (strength):', strength);
+                    generatedImageUrl = await generateImageWithGemini(imagePrompt, srcImageUrl, strength);
+                }
                 
                 // 이미지 생성 결과 처리
                 if (generatedImageUrl) {
                     finalImageUrl = generatedImageUrl;
                     imageGenerationSuccess = true;
-                    console.log('Gemini 이미지 생성 완료');
+                    console.log('✅ Gemini 이미지 생성 완료');
                 } else {
-                    console.warn('Gemini 이미지 생성 실패');
+                    console.warn('⚠️ Gemini 이미지 생성 실패 - 텍스트만 응답');
                     finalImageUrl = srcImageUrl;
                     imageGenerationSuccess = false;
                     imageGenerationError = 'Gemini API에서 이미지 대신 텍스트만 응답했습니다.';
                 }
             } catch (imageError) {
-                console.error('Gemini 이미지 생성 실패:', imageError);
+                console.error('❌ Gemini 이미지 생성 실패:', imageError);
                 imageGenerationError = imageError.message;
                 // 원본 이미지 유지
             }
         } else {
-            console.warn('원본 이미지 URL이 없어 이미지 생성을 건너뜁니다.');
+            console.warn('⚠️ 원본 이미지 URL이 없어 이미지 생성을 건너뜁니다.');
             finalImageUrl = null;
             imageGenerationError = '원본 이미지 URL이 없어 이미지 생성을 수행할 수 없습니다.';
         }
         
-        console.log(' 제품 개선 성공');
+        console.log('✅ 제품 개선 성공');
         
         return {
             title: improvedIdea.title,
@@ -1907,10 +2055,40 @@ export async function improveProduct(originalTitle, originalDescription, stepsDa
  * @param {string} originalDescription - 원본 제품 설명
  * @param {Array} stepsData - GPT 분석 단계 데이터
  * @param {string} additiveType - 첨가제 타입
+ * @param {string} visionResult - Vision 분석 결과 (선택사항)
+ * @param {string} srcImageUrl - 원본 아이디어 이미지 URL (선택사항)
+ * @param {string} referenceImageUrl - 레퍼런스 이미지 URL (심미성 첨가제용, 선택사항)
+ * @param {number} sliderValue - 슬라이더 값 (0: 많이 변형, 1: 적당히, 2: 조금 변형)
  * @returns {Promise<Object>} 개선된 제품 정보
  */
-export const improveProductInfo = async (originalTitle, originalDescription, stepsData, additiveType) => {
-    return await improveProduct(originalTitle, originalDescription, stepsData, additiveType);
+export const improveProductInfo = async (
+  originalTitle, 
+  originalDescription, 
+  stepsData, 
+  additiveType, 
+  visionResult = '', 
+  srcImageUrl = null,
+  referenceImageUrl = null,
+  sliderValue = 1
+) => {
+    console.log('🎨 improveProductInfo 호출:', {
+      originalTitle,
+      additiveType,
+      hasSrcImage: !!srcImageUrl,
+      hasReferenceImage: !!referenceImageUrl,
+      sliderValue
+    });
+    
+    return await improveProduct(
+      originalTitle, 
+      originalDescription, 
+      stepsData, 
+      additiveType, 
+      visionResult, 
+      srcImageUrl,
+      referenceImageUrl,
+      sliderValue
+    );
 };
 
 /**
@@ -1989,7 +2167,7 @@ export const generateProductTag = async (visionAnalysis, title, description) => 
 // IFL(랜덤 아이디어 생성) 함수 - GPT-4o 사용
 export const generateRandomIdea = async (userPrompt) => {
   try {
-    console.log('GPT-4o 랜덤 아이디어 생성 시작:', userPrompt);
+    console.log('랜덤 아이디어 생성 시작:', userPrompt);
     
     const prompt = `당신은 창의적인 제품 디자인 전문가입니다. 
 사용자가 입력한 키워드를 바탕으로 혁신적이고 실용적인 제품 아이디어를 생성해주세요.
@@ -1998,37 +2176,46 @@ export const generateRandomIdea = async (userPrompt) => {
 
 다음 JSON 형식으로 응답해주세요:
 {
-  "title": "제품 이름 (간결하고 창의적인 한글로)",
-  "description": "제품에 대한 상세한 설명 (기능, 사용법, 특징을 포함하여 3-4문장으로, 한글로)",
-  "imagePrompt": "이미지 생성을 위한 영어 프롬프트 (제품이 잘리지 않도록 'full product view, completely visible, not cropped, proper framing' 등의 키워드 포함)"
+  "title": "제품 이름",
+  "description": "제품 설명",
+  "imagePrompt": "이미지 프롬프트"
 }
 
-중요한 요구사항:
-- title과 description은 반드시 한글로 작성하세요
-- 제품명은 한국인이 이해하기 쉬운 한글 이름으로 지어주세요
-- 설명도 모두 한글로 작성하고, 친근하고 이해하기 쉽게 써주세요
-- imagePrompt만 영어로 작성하세요
-- 실제로 존재할 법한 현실적이고 유용한 제품을 제안하세요
+요구사항:
+1. title: 한글로 된 간결하고 창의적인 제품 이름 (예: "스마트 자세 교정 의자")
+2. description: 한글로 된 상세한 설명, 3-4문장 (기능, 사용법, 특징, 아이디어 기획 이유 포함)
+3. imagePrompt: 영어로 작성, 구체적인 제품 설명 포함. 반드시 다음 구조로 작성:
+   - 첫 번째: 구체적인 제품 종류와 핵심 기능 설명 (예: "Modern adjustable standing desk with integrated tablet holder and cable management")
+   - 두 번째: 디자인 스타일과 재질 (예: "minimalist design, wooden surface with metal legs")
+   - 세 번째: 촬영 스타일 "premium product photography, clean white background, studio lighting, centered composition"
 
-imagePrompt 작성 시 반드시 다음을 포함하세요:
-- Professional product rendering
-- Clean white background
-- Studio lighting setup
-- Commercial photography style
-- Premium product visualization
-- Full product visibility
-- High-end design aesthetic
+중요: imagePrompt는 제품의 구체적인 특징을 명확히 설명해야 합니다. 추상적인 표현은 피하고, 실제 제품의 형태와 기능을 정확히 묘사하세요.
 
-참고: Apple, Samsung, Dyson과 같은 브랜드의 제품 렌더링 스타일을 지향하세요.
-창의성과 실용성을 모두 고려하여 독창적인 아이디어를 제안해주세요.`;
+위 형식을 정확히 따라 JSON만 출력하세요.`;
 
-    // GPT-4o API 사용 (JSON 강제)
-    const responseText = await callGPTTextAPI(prompt, true, 0.8, 500);
+    // GPT-4o API 사용 (JSON 모드 강제)
+    const responseText = await callGPTTextAPI(prompt, true, 0.8, 600);
+    
+    console.log('📝 GPT 응답:', responseText.substring(0, 200) + '...');
     
     // JSON 파싱
-    const ideaData = JSON.parse(responseText);
+    let ideaData;
+    try {
+      ideaData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('JSON 파싱 실패, 응답:', responseText);
+      // JSON 블록 추출 시도
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        ideaData = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('유효한 JSON을 찾을 수 없습니다.');
+      }
+    }
     
-    console.log('GPT-4o 랜덤 아이디어 생성 완료');
+    console.log('✅ GPT-4o 랜덤 아이디어 생성 완료:', ideaData.title);
+    console.log('📝 생성된 이미지 프롬프트:', ideaData.imagePrompt);
+    
     return {
       title: ideaData.title || '새로운 아이디어',
       description: ideaData.description || '혁신적인 제품 아이디어입니다.',
@@ -2036,7 +2223,7 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
     };
     
   } catch (error) {
-    console.error('랜덤 아이디어 생성 실패:', error);
+    console.error('❌ 랜덤 아이디어 생성 실패:', error);
     throw error;
   }
 };
@@ -2044,43 +2231,23 @@ imagePrompt 작성 시 반드시 다음을 포함하세요:
 // Stability AI 이미지 생성 함수 (IFL용)
 export const generateImageWithStability = async (prompt) => {
   try {
-    console.log('Stability AI 이미지 생성 (IFL):', prompt);
-    
-    // 잘못된 제품 키워드 감지
-    const unwantedItems = ['phone', 'iphone', 'smartphone', 'monitor', 'screen', 'display', 'computer', 'laptop', 'tablet'];
-    const hasUnwantedItems = unwantedItems.some(item => 
-      prompt.toLowerCase().includes(item.toLowerCase())
-    );
-    
-    // 프롬프트 개선: 제품이 잘리지 않도록 키워드 추가
-    let enhancedPrompt = prompt;
-    
-    if (hasUnwantedItems) {
-      console.warn('IFL: 잘못된 제품 키워드 감지, 일반적인 제품으로 대체');
-      enhancedPrompt = prompt.replace(/\b(phone|iphone|smartphone|monitor|screen|display|computer|laptop|tablet)\b/gi, 'product');
-    }
-    
-    // 제품 렌더링 필수 키워드 추가
-    if (!enhancedPrompt.toLowerCase().includes('product rendering') && !enhancedPrompt.toLowerCase().includes('product photography')) {
-      enhancedPrompt = `Premium product rendering, ${enhancedPrompt}, clean white background, studio lighting, full product view, centered composition, no background elements`;
-    }
-    
-    // 브랜드 스타일 키워드 추가 (랜덤하게 선택)
-    const brandStyles = ['Apple-style', 'Samsung-style', 'Dyson-inspired', 'minimalist modern'];
-    const randomStyle = brandStyles[Math.floor(Math.random() * brandStyles.length)];
-    enhancedPrompt = `${randomStyle} ${enhancedPrompt}`;
+    console.log('🎨 Stability AI Ultra 이미지 생성 시작');
+    console.log('📝 원본 프롬프트:', prompt);
     
     if (!STABILITY_API_KEY) {
       throw new Error('Stability AI API 키가 설정되지 않았습니다.');
     }
 
+    // 프롬프트 최적화 - GPT가 생성한 프롬프트를 기반으로 Ultra 모델용 키워드 추가
+    const ultraPrompt = `${prompt}, premium product rendering, commercial photography quality, photorealistic materials, ultra-sharp details, 8K resolution, professional color grading, perfect lighting, commercial grade visualization`;
+    
+    console.log('✨ Ultra 최적화 프롬프트:', ultraPrompt);
+
     // FormData 생성 - Ultra 모델용 최고품질 제품 렌더링
     const formData = new FormData();
-    const ultraPrompt = `Premium product rendering, commercial photography style, ${enhancedPrompt}, clean white background, professional studio lighting, sleek modern design, Apple-style product photography, Samsung-style visualization, Dyson-inspired aesthetic, minimalist design, high-end product visualization, photorealistic materials, ultra-sharp details, commercial grade image, no background elements, centered composition, perfect lighting, 8K resolution quality`;
     formData.append('prompt', ultraPrompt);
     formData.append('aspect_ratio', '1:1');
     formData.append('output_format', 'png');
-    // Ultra 모델에서는 style_preset 지원하지 않으므로 제거
 
     const response = await fetch(STABILITY_API_URL, {
       method: 'POST',
@@ -2093,7 +2260,7 @@ export const generateImageWithStability = async (prompt) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Stability AI API 오류 상세:', {
+      console.error('❌ Stability AI API 오류:', {
         status: response.status,
         statusText: response.statusText,
         error: errorText
@@ -2101,7 +2268,7 @@ export const generateImageWithStability = async (prompt) => {
       throw new Error(`Stability AI API 요청 실패 (${response.status}): ${errorText.substring(0, 200)}`);
     }
 
-    // 이미지 데이터를 Base64로 변환 (더 안전한 방법)
+    // 이미지 데이터를 Base64로 변환
     const imageBuffer = await response.arrayBuffer();
     const uint8Array = new Uint8Array(imageBuffer);
     
@@ -2113,11 +2280,11 @@ export const generateImageWithStability = async (prompt) => {
       reader.readAsDataURL(blob);
     });
     
-    console.log('Stability AI 이미지 생성 (IFL) 완료, Base64 길이:', base64Image.length);
+    console.log('✅ Stability AI Ultra 이미지 생성 완료, Base64 길이:', base64Image.length);
     return base64Image;
     
   } catch (error) {
-    console.error('이미지 생성 실패:', error);
+    console.error('❌ Stability AI 이미지 생성 실패:', error);
     throw error;
   }
 };

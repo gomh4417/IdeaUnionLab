@@ -106,35 +106,95 @@ export default function HistoryList({
     };
   }, [isOpen]);
 
-  // 실험 목록 로드 (하드코딩 방식)
+  // 실험 목록 로드 - 원재료 아이디어의 experiments에서 모두 조회
   const loadExperiments = async () => {
     if (!projectId || !ideaId) return;
 
     try {
       setLoading(true);
-      console.log('🔍 실험 목록 로드 시작 (하드코딩 방식)...');
+      console.log('🔍 실험 목록 로드 시작:', { projectId, ideaId });
       
-      // 하드코딩 방식: 직접 experiments 컬렉션 조회
-      const experimentsRef = collection(db, 'projects', projectId, 'ideas', ideaId, 'experiments');
-      const q = query(experimentsRef, orderBy('timestamp_created', 'desc'));
-      const querySnapshot = await getDocs(q);
-
-      const experiments = [];
-      querySnapshot.forEach((doc) => {
+      // 현재 아이디어 정보 가져오기
+      const { doc: firestoreDoc, getDoc, collection: firestoreCollection, getDocs } = await import('firebase/firestore');
+      const currentIdeaRef = firestoreDoc(db, 'projects', projectId, 'ideas', ideaId);
+      const currentIdeaDoc = await getDoc(currentIdeaRef);
+      
+      if (!currentIdeaDoc.exists()) {
+        console.error('❌ 현재 아이디어를 찾을 수 없음:', ideaId);
+        return;
+      }
+      
+      const currentIdeaData = currentIdeaDoc.data();
+      const currentIdeaType = currentIdeaData.type || 'original';
+      
+      console.log('📦 현재 아이디어:', {
+        id: ideaId,
+        type: currentIdeaType,
+        generation: currentIdeaData.generation,
+        sourceIdeaId: currentIdeaData.sourceIdeaId
+      });
+      
+      // 🔥 원재료 아이디어 ID 찾기
+      let rootIdeaId = ideaId;
+      
+      if (currentIdeaType === 'generated' && currentIdeaData.sourceIdeaId) {
+        // 생성물인 경우 sourceIdeaId를 거슬러 올라가 원재료 찾기
+        let tempId = currentIdeaData.sourceIdeaId;
+        let iterationLimit = 10;
+        
+        while (iterationLimit > 0) {
+          const tempRef = firestoreDoc(db, 'projects', projectId, 'ideas', tempId);
+          const tempDoc = await getDoc(tempRef);
+          
+          if (!tempDoc.exists()) {
+            console.warn('⚠️ 원재료 추적 중 문서를 찾을 수 없음:', tempId);
+            break;
+          }
+          
+          const tempData = tempDoc.data();
+          
+          // 원재료를 찾았거나, sourceIdeaId가 없으면 중단
+          if (!tempData.type || tempData.type === 'original' || !tempData.sourceIdeaId) {
+            rootIdeaId = tempId;
+            console.log('✅ 원재료 아이디어 발견:', rootIdeaId);
+            break;
+          }
+          
+          tempId = tempData.sourceIdeaId;
+          iterationLimit--;
+        }
+      }
+      
+      console.log('📍 실험을 조회할 원재료 아이디어 ID:', rootIdeaId);
+      
+      // 🔥 원재료 아이디어의 모든 experiments 조회
+      const experimentsRef = firestoreCollection(db, 'projects', projectId, 'ideas', rootIdeaId, 'experiments');
+      const experimentsSnapshot = await getDocs(experimentsRef);
+      
+      const experimentsData = [];
+      experimentsSnapshot.forEach((doc) => {
         const data = doc.data();
-        // 완료된 실험만 추가 (하드코딩된 필드명 사용)
-        if (data.status === 'completed' && data.dropItem_title) {
-          experiments.push({
+        
+        // 완료된 실험만 포함
+        if (data.status === 'completed') {
+          // 🔥 원재료 아이디어의 모든 실험을 가져와서 표시
+          // 이유: 사용자가 3차 생성물의 히스토리를 볼 때, 1차→2차→3차 전체 흐름을 보여줘야 함
+          experimentsData.push({
             id: doc.id,
             ...data
           });
+          console.log(`✅ ${data.generation}차 실험 로드 (ID: ${doc.id}, 실험 대상: ${data.sourceIdeaId}, 결과물: ${data.resultIdeaId})`);
         }
       });
+      
+      // generation 순으로 정렬 (오름차순: 1차→2차→3차)
+      experimentsData.sort((a, b) => (a.generation || 0) - (b.generation || 0));
 
-      console.log('✅ 조회된 실험 수:', experiments.length);
-      setExperiments(experiments);
+      console.log('✅ 총 조회된 실험 수:', experimentsData.length);
+      
+      setExperiments(experimentsData);
     } catch (error) {
-      console.error('실험 목록 로드 실패:', error);
+      console.error('❌ 실험 목록 로드 실패:', error);
       setExperiments([]);
     } finally {
       setLoading(false);
@@ -150,54 +210,135 @@ export default function HistoryList({
 
   const handleHistoryItemClick = async (experiment) => {
     try {
-      // 선택된 실험의 결과 페이지로 이동 (하드코딩된 필드명 사용)
+      console.log('📌 선택된 실험:', experiment);
+      
+      // 선택된 실험의 resultIdeaId로 생성물 아이디어 찾기
+      const resultIdeaId = experiment.resultIdeaId;
+      
+      if (!resultIdeaId) {
+        console.error('❌ resultIdeaId가 없습니다');
+        return;
+      }
+      
+      // 결과 아이디어 문서 가져오기
+      const { doc: firestoreDoc, getDoc } = await import('firebase/firestore');
+      const resultIdeaRef = firestoreDoc(db, 'projects', projectId, 'ideas', resultIdeaId);
+      const resultIdeaDoc = await getDoc(resultIdeaRef);
+      
+      if (!resultIdeaDoc.exists()) {
+        console.error('❌ 결과 아이디어를 찾을 수 없음:', resultIdeaId);
+        return;
+      }
+      
+      const resultIdeaData = resultIdeaDoc.data();
+      console.log('🎯 결과 아이디어 데이터:', resultIdeaData);
+      
+      // Step 3 데이터 파싱
+      let step3Data = {};
+      try {
+        step3Data = JSON.parse(experiment.current_step3_data || '{}');
+      } catch (e) {
+        console.warn('⚠️ step3 데이터 파싱 실패:', e);
+      }
+      
+      // 🖼️ 실험 결과 이미지 사용 (current_imageUrl = 생성된 결과물 이미지)
+      // 우선순위: current_imageUrl > resultIdeaData.imageUrl > original_imageUrl
+      const resultImageUrl = experiment.current_imageUrl || resultIdeaData.imageUrl || experiment.original_imageUrl;
+      
+      console.log('🖼️ 이미지 선택:', {
+        originalImageUrl: experiment.original_imageUrl, // 실험 대상이었던 이미지
+        currentImageUrl: experiment.current_imageUrl,   // 실험 결과 이미지 (이걸 사용!)
+        resultIdeaImageUrl: resultIdeaData.imageUrl,
+        selected: resultImageUrl
+      });
+      
+      // 🎨 첨가제 타입에 따른 브랜드 컬러 설정
+      const ADDITIVE_COLORS = {
+        creativity: '#5755FE',
+        aesthetics: '#00CD80',
+        usability: '#FD6B03'
+      };
+      const additiveTypeFromData = experiment.current_additiveType || resultIdeaData.additiveType || 'creativity';
+      const brandColor = ADDITIVE_COLORS[additiveTypeFromData] || '#5755FE';
+      
+      console.log('🎨 브랜드 컬러 설정:', { additiveType: additiveTypeFromData, brandColor });
+      
+      const experimentIdentifier = experiment.experimentId || experiment.id || '';
+
+      const baseIdea = {
+        id: experiment.sourceIdeaId || experiment.rootIdeaId || '',
+        title: experiment.original_title || resultIdeaData.sourceTitle || 'Unknown Title',
+        description: experiment.original_description || resultIdeaData.sourceDescription || 'No description',
+        imageUrl: experiment.original_imageUrl || '',
+        type: experiment.original_type || 'original',
+        additiveType: experiment.prev_additiveType || additiveTypeFromData,
+        generation:
+          typeof experiment.original_generation === 'number'
+            ? experiment.original_generation
+            : Math.max((resultIdeaData.sourceGeneration || (experiment.generation || 1)) - 1, 0),
+        sourceIdeaId: experiment.sourceIdeaId || null,
+        sourceExperimentId: experiment.prev_experimentId || null,
+        isHistoryView: true
+      };
+
+      const historyResultIdea = {
+        id: resultIdeaId,
+        title: experiment.current_title || resultIdeaData.title || 'Unknown Title',
+        description: experiment.current_description || resultIdeaData.description || 'No description',
+        imageUrl: resultImageUrl,
+        type: 'generated',
+        additiveType: additiveTypeFromData,
+        generation: experiment.generation || resultIdeaData.generation || 1, // 🔥 실험의 generation 우선 사용
+        sourceIdeaId: experiment.sourceIdeaId || null,
+        sourceExperimentId: experimentIdentifier || null,
+        dalleGenerated: !!resultIdeaData.dalleGenerated,
+        dalleError: resultIdeaData.dalleError || null,
+        isHistoryView: true
+      };
+
+      const reconstructedResponse = {
+        title: experiment.current_title || '',
+        description: experiment.current_description || '',
+        steps: [
+          {
+            title: experiment.current_step1_title || '',
+            description: experiment.current_step1_description || ''
+          },
+          {
+            title: experiment.current_step2_title || '',
+            description: experiment.current_step2_description || ''
+          },
+          {
+            title: experiment.current_step3_title || '',
+            ...step3Data
+          },
+          {
+            title: experiment.current_step4_title || '',
+            description: experiment.current_step4_description || ''
+          }
+        ].filter(step => step.title || step.description)
+      };
+
+      // ResultPage로 이동 (과거 기록 보기 모드)
       navigate('/result', {
         state: {
-          experimentId: experiment.id,
+          experimentId: experimentIdentifier,
           projectId,
-          ideaId,
-          originalIdea: {
-            id: ideaId,
-            title: experiment.dropItem_title || 'Unknown Title',
-            imageUrl: experiment.dropItem_imageUrl || null,
-            description: experiment.dropItem_description || 'No description',
-            type: 'generated',
-            additiveType: experiment.experiment_additiveType,
-            generation: experiment.experiment_generation || 1
-          },
-          // 실험 조건 정보 (하드코딩된 필드명)
-          additiveType: experiment.experiment_additiveType,
-          additiveIntensity: experiment.experiment_additiveIntensity,
-          referenceImage: experiment.extra_referenceImageUrl || null,
-          visionAnalysis: experiment.extra_visionAnalysis || null,
-          // ResultReport용 GPT 응답 복원 (하드코딩된 필드명으로)
-          gptResponse: {
-            title: experiment.report_gptTitle || '',
-            description: experiment.report_gptDescription || '',
-            steps: [
-              {
-                title: experiment.report_step1_title || '',
-                content: experiment.report_step1_content || ''
-              },
-              {
-                title: experiment.report_step2_title || '',
-                content: experiment.report_step2_content || ''
-              },
-              {
-                title: experiment.report_step3_title || '',
-                content: experiment.report_step3_content || ''
-              },
-              {
-                title: experiment.report_step4_title || '',
-                content: experiment.report_step4_content || ''
-              }
-            ].filter(step => step.title || step.content) // 빈 단계 제거
-          },
-          needsSaving: false // 기존 데이터이므로 저장 불필요
+          ideaId: historyResultIdea.id,
+          originalIdea: baseIdea,
+          resultIdea: historyResultIdea,
+          additiveType: additiveTypeFromData,
+          additiveIntensity: experiment.current_additiveIntensity || 0,
+          referenceImage: experiment.current_referenceImageUrl || null,
+          visionAnalysis: experiment.current_visionAnalysis || null,
+          gptResponse: reconstructedResponse,
+          brandColor,
+          sourceImageUrl: baseIdea.imageUrl,
+          needsSaving: false
         }
       });
     } catch (error) {
-      console.error('히스토리 아이템 클릭 실패:', error);
+      console.error('❌ 히스토리 아이템 클릭 실패:', error);
       alert('선택한 실험 기록을 불러오는 중 오류가 발생했습니다.');
     }
     
@@ -236,11 +377,11 @@ export default function HistoryList({
               실험 기록이 없습니다
             </div>
           ) : (
-            experiments.map((experiment, index) => (
+            experiments.map((experiment) => (
               <HistoryItem
                 key={experiment.id}
-                generation={index + 1}
-                additiveType={experiment.experiment_additiveType || additiveType} // 하드코딩된 필드명
+                generation={experiment.generation || 1} // 실험의 generation 사용
+                additiveType={experiment.current_additiveType || additiveType}
                 onClick={() => handleHistoryItemClick(experiment)}
               />
             ))

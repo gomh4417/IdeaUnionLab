@@ -19,7 +19,7 @@ const ReportWrap = styled.div`
 const LineWrap = styled.div`
   width: 20px;
   height: 100%;
-  min-height: 2200px;
+  min-height: 3360px;
   transform: translateY(-92px);
   position: absolute;
 `;
@@ -118,7 +118,23 @@ const StepContent = styled.h5`
   margin-bottom: 20px;
 `;
 
-export default function ResultReport({ brandColor, experimentResult, additiveType }) {
+const OriginImgBox = styled.div`
+  width: 480px;
+  
+  border: 1px solid ${({ theme }) => theme.colors.gray[300]};
+  border-radius: ${({ theme }) => theme.radius.small};
+  overflow: hidden;
+    margin-bottom: 8px;
+  
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+`;
+
+export default function ResultReport({ brandColor, experimentResult, additiveType, originalIdea, sourceImageUrl }) {
     const reportRef = useRef();
     const stepRefs = [useRef(), useRef(), useRef(), useRef()];
     const [scrollY, setScrollY] = useState(0);
@@ -223,6 +239,12 @@ export default function ResultReport({ brandColor, experimentResult, additiveTyp
                                 <Chip $active={activeStepIndex >= 0} $brandcolor={color}>1/4</Chip>
                                 <ChipLabel $active={activeStepIndex >= 0} $brandcolor={color}>원재료 아이디어 분석</ChipLabel>
                             </ChipWrap>
+                            {/* 🔥 sourceImageUrl이 있으면 우선 사용 (과거 기록 보기 모드), 없으면 originalIdea.imageUrl 사용 */}
+                            {(sourceImageUrl || originalIdea?.imageUrl) && (
+                                <OriginImgBox>
+                                    <img src={sourceImageUrl || originalIdea.imageUrl} alt="원재료 아이디어 이미지" />
+                                </OriginImgBox>
+                            )}
                             <StepTextWrap>
                                 <StepTitle>
                                     {experimentResult.steps[0]?.title || '원재료 아이디어 분석을 진행했습니다.'}
