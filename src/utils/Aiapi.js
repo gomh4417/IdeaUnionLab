@@ -1316,109 +1316,85 @@ async function createImagePrompt(improvedIdea, step4Insight, additiveType = null
     let systemPrompt = '';
     
     if (additiveType === 'aesthetics') {
-        systemPrompt = `You are an expert product designer specializing in aesthetic transformations through style transfer and case-based reasoning.
+        systemPrompt = `You are an expert product designer specializing in aesthetic transformations through style transfer.
 
-AESTHETICS FOCUS - COMPREHENSIVE VISUAL TRANSFORMATION:
-Based on the Case-Based Reasoning (CBR) approach in the Step 4 insight, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS that transfer aesthetic characteristics from a reference design to the original product.
+TASK: Based on Step 4 insight, create CLEAR and CONCISE visual modification instructions that transfer aesthetic characteristics from a reference image to the original product.
 
-CRITICAL: The Step 4 insight describes how to transfer aesthetic attributes (form, material, color) from a reference design. Your task is to convert these abstract transfer concepts into concrete visual instructions.
+FOCUS ON:
+1. FORM CHANGES: Specific shape, proportion, or structural modifications
+2. MATERIAL CHANGES: Surface finish, texture, or material transitions
+3. COLOR CHANGES: Exact color palette, tones, or patterns
 
-AESTHETIC TRANSFORMATION CATEGORIES:
+RULES:
+- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
+- Focus ONLY on the most important visual changes mentioned in Step 4
+- DO NOT include generic examples or placeholder materials
+- DO NOT mention materials not specified in Step 4 insight
+- Make every instruction ACTIONABLE for image generation AI
 
-1. FORM ATTRIBUTES (형태 속성):
-   - Overall shape and silhouette changes
-   - Proportional adjustments (length, width, height ratios)
-   - Curves vs. straight lines
-   - Symmetry vs. asymmetry
-   - Edge treatments (sharp, rounded, beveled)
-   - Structural details and contours
-
-2. MATERIAL ATTRIBUTES (재료 속성):
-   - Material type changes (wood → metal, plastic → glass, fabric → leather)
-   - Surface treatments (polished, brushed, textured, smooth)
-   - Finish quality (glossy, matte, satin, metallic)
-   - Material combinations and contrasts
-   - Visible craftsmanship details
-
-3. COLOR ATTRIBUTES (색상 속성):
-   - Primary color palette
-   - Color combinations and schemes
-   - Tone and saturation levels
-   - Gradients or solid colors
-   - Accent colors and highlights
-   - Color blocking patterns
-
-IMPORTANT: 
-- Analyze the Step 4 insight to identify which specific attributes should be transferred
-- Provide concrete, actionable instructions for each attribute category
-- The transformation should be comprehensive and visible
-- Maintain professional product photography quality`;
+Output format: "Apply [specific change 1]. Modify [specific change 2]. Add [specific change 3]."`;
     } else if (additiveType === 'creativity') {
-        systemPrompt = `You are a creative product designer specializing in innovative form transformations. Based on the TRIZ-based improvement insight, provide BOLD STRUCTURAL MODIFICATION INSTRUCTIONS for the product image. 
+        systemPrompt = `You are a creative product designer specializing in innovative form transformations.
 
-CREATIVITY FOCUS - RADICAL FORM CHANGES:
-- Dramatic shape transformations (straight lines to organic curves, rigid to flexible forms)
-- Revolutionary proportion changes (elongate, compress, or restructure entire form)
-- Innovative structural arrangements (asymmetric designs, modular segments, floating elements)
-- Creative material combinations and contrasts
-- Unconventional orientations or configurations
+TASK: Based on TRIZ-based Step 4 insight, create CLEAR and CONCISE structural modification instructions.
+
+FOCUS ON:
+- Dramatic shape transformations
+- Revolutionary proportion changes  
+- Innovative structural arrangements
 - Bold geometric reinterpretations
-- Structural innovations that challenge traditional product forms
 
-IMPORTANT: Focus on making the product FUNDAMENTALLY DIFFERENT in appearance and structure. Avoid minor surface changes - aim for transformative design that makes people say "I've never seen anything like this before."
+RULES:
+- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
+- Focus ONLY on the most impactful changes mentioned in Step 4
+- DO NOT include generic examples
+- Make instructions ACTIONABLE for image generation AI
 
-Give concrete instructions for dramatic visual transformation.`;
+Output format: "Transform by [specific change 1]. Add [specific change 2]. Restructure [specific change 3]."`;
     } else if (additiveType === 'usability') {
-        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC FUNCTIONAL MODIFICATION INSTRUCTIONS for the product image. Focus on usability improvements like:
-- Exact ergonomic shape adjustments (add lumbar support curve, widen armrests, etc.)
-- Handle or grip modifications (add rubber grips, change handle angle, etc.)
-- Control interface changes (relocate buttons, add visual indicators, etc.)
-- Size or dimension optimizations (adjust seat height, modify depth, etc.)
-- Adding user-friendly features (add cushioning, improve stability, etc.)
-- Accessibility improvements (add grab bars, improve contrast, etc.)
+        systemPrompt = `You are a product designer specializing in usability improvements.
 
-Give concrete, actionable functional change instructions that improve user experience.`;
+TASK: Based on Step 4 insight, create CLEAR and CONCISE functional modification instructions.
+
+FOCUS ON:
+- Ergonomic shape adjustments
+- Control interface improvements
+- Size or dimension optimizations
+- User-friendly feature additions
+
+RULES:
+- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
+- Focus ONLY on the most important functional changes mentioned in Step 4
+- DO NOT include generic examples
+- Make instructions ACTIONABLE for image generation AI
+
+Output format: "Modify [specific ergonomic change]. Add [specific functional feature]. Adjust [specific dimension]."`;
     } else {
-        systemPrompt = `You are an expert product designer. Based on the improvement insight, provide SPECIFIC MODIFICATION INSTRUCTIONS for the product image. Focus on practical changes that improve the product while keeping it visually appealing and commercially viable.`;
+        systemPrompt = `You are an expert product designer.
+
+TASK: Based on Step 4 insight, create CLEAR and CONCISE modification instructions.
+
+RULES:
+- Keep instructions SHORT and SPECIFIC (max 3-4 sentences)
+- Focus ONLY on changes mentioned in Step 4
+- DO NOT include generic examples
+- Make instructions ACTIONABLE for image generation AI`;
     }
 
     const userPrompt = `Product: ${improvedIdea.title}
 Product Description: ${improvedIdea.description}
-Step 4 Improvement Insight: ${step4Insight}
+Step 4 Insight: ${step4Insight}
 
-TASK: Analyze the Step 4 insight and convert it into SPECIFIC VISUAL MODIFICATION INSTRUCTIONS.
+Create SHORT and SPECIFIC visual modification instructions (max 3-4 sentences).
 
-ANALYSIS PROCESS:
-1. First, identify what specific improvements are mentioned in the Step 4 insight
-2. Determine which visual/physical aspects of the product need to change
-3. Convert abstract concepts (like "asymmetry", "curves", "ergonomics") into concrete visual changes
-4. Specify exact materials, colors, shapes, dimensions, and positions
+CRITICAL RULES:
+1. Extract ONLY the key changes from Step 4 insight
+2. Convert them into DIRECT, ACTIONABLE instructions
+3. NO examples, NO generic descriptions, NO unnecessary words
+4. Start with action verbs: "Apply", "Modify", "Transform", "Add", "Change"
+5. Be SPECIFIC about what changes, not how to think about it
 
-STEP 4 INSIGHT ANALYSIS:
-Please analyze the Step 4 insight and identify:
-- What TRIZ principles or design concepts are mentioned?
-- What specific problems does it aim to solve?
-- What physical/visual changes would implement these improvements?
-- How can these changes be visually represented in the product?
-
-CONCRETE VISUAL INSTRUCTIONS:
-Based on your analysis, provide SPECIFIC VISUAL MODIFICATION INSTRUCTIONS:
-
-Requirements:
-1. Start with "Transform the ${improvedIdea.title.toLowerCase()} by "
-2. Give SPECIFIC instructions about what should be changed, added, or modified
-3. Focus on the most impactful visual changes that align with the additive type
-4. Reference the Step 4 insight to justify each change
-5. Make instructions clear and actionable for image generation AI
-
-For CREATIVITY additive: Focus on dramatic structural changes, not surface modifications
-For AESTHETICS additive: Focus on material, color, and surface refinements  
-For USABILITY additive: Focus on ergonomic and functional improvements
-
-Example analysis and output:
-Step 4 Insight: "비대칭성과 곡선 원리를 적용하여 의자의 안정성과 미적 매력을 향상"
-Analysis: 비대칭성 = 좌우 다른 구조, 곡선 = 직선을 곡선으로 변경
-Output: "Transform the chair by creating asymmetric armrests with different heights, converting straight legs to flowing curved supports, and adding organic curved contours to the backrest design."`;
+Output ONLY the modification instructions, nothing else.`;
 
     try {
         const response = await fetch(API_URL, {
@@ -1578,35 +1554,37 @@ async function generateImageWithTwoInputs(imagePrompt, srcImageUrl, refImageUrl,
         const refImage = await urlToBase64(refImageUrl);
 
         // Gemini API 요청 구조 - 심미성 첨가제 전용 (레퍼런스 스타일 전이)
-        const aestheticsPrompt = `TASK: Transform the product in the FIRST image by applying the aesthetic style and characteristics from the SECOND image.
+        const aestheticsPrompt = `IMAGE TRANSFORMATION TASK:
 
-IMAGE INPUT INSTRUCTIONS:
-- FIRST IMAGE: Original product to be transformed (maintain structure and form)
-- SECOND IMAGE: Reference style to apply (extract colors, materials, patterns, textures)
+TWO INPUT IMAGES:
+1. ORIGINAL PRODUCT (first image): Product to be transformed
+2. REFERENCE DESIGN (second image): Style source
 
-STYLE TRANSFER INTENSITY: ${getStrengthDescription(strength)}
-${strength <= 0.3 ? '→ Apply reference style SUBTLY. Keep original aesthetics mostly intact, add only hints of reference style.' : 
-  strength <= 0.6 ? '→ Apply reference style MODERATELY. Balance between original and reference aesthetics.' :
-  '→ Apply reference style STRONGLY. Transform aesthetics significantly to match reference image.'}
+YOUR TASK:
+Transform the FIRST image's product to adopt aesthetic characteristics from the SECOND image.
 
-SPECIFIC INSTRUCTIONS FOR AESTHETIC TRANSFORMATION:
+TRANSFER FROM SECOND IMAGE:
+- Color palette and combinations
+- Material appearance and finish  
+- Surface textures and patterns
+- Visual style and mood
+
+KEEP FROM FIRST IMAGE:
+- Basic structure and form
+- Product type and proportions
+
+TRANSFORMATION STRENGTH: ${Math.round(strength * 100)}%
+
+SPECIFIC MODIFICATIONS:
 ${imagePrompt}
 
-AESTHETIC TRANSFORMATION REQUIREMENTS:
-1. KEEP STRUCTURE: Maintain the original product's structure, form, and proportions from the first image
-2. TRANSFER AESTHETICS: Apply the following from the second image:
-   - Color palette and color combinations
-   - Material appearance (wood grain, metal finish, fabric texture, etc.)
-   - Surface treatments (glossy, matte, brushed, polished)
-   - Pattern or decorative elements
-   - Overall visual style and mood
-3. NATURAL INTEGRATION: Make the aesthetic changes look natural and well-integrated
-4. PROFESSIONAL QUALITY: Maintain high-quality product photography standards
-5. WHITE BACKGROUND: Keep clean white background for professional presentation
+OUTPUT REQUIREMENTS:
+- Clean white background
+- Professional product photography
+- High resolution and detail
+- Natural integration of changes
 
-CRITICAL: The result should be the FIRST image's product transformed to have the SECOND image's aesthetic characteristics. You must apply the "refImageUrl" image style to the "srcImage" image included in "inlineData". The shape, material, color, etc. of "refImageUrl" must be reflected in "srcImage".
-
-OUTPUT: Generate ONLY the transformed product image. No text, no explanations, just the image.`;
+Generate ONLY the transformed product image.`;
 
         const requestBody = {
             contents: [{
@@ -1624,12 +1602,12 @@ OUTPUT: Generate ONLY the transformed product image. No text, no explanations, j
                         }
                     },
                     { 
-                        text: await translateGeminiPrompt(aestheticsPrompt)
+                        text: aestheticsPrompt  // 영어 그대로 사용
                     }
                 ]
             }],
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.4,  // 더 일관된 결과를 위해 낮춤
                 maxOutputTokens: 8192,
                 candidateCount: 1
             }
@@ -1709,11 +1687,24 @@ async function generateImage(imagePrompt, refImageUrl, strength = 0.6) {
         // 참조 이미지를 base64로 변환
         const { base64, mime } = await urlToBase64(refImageUrl);
 
+        // 간결한 프롬프트
+        const finalPrompt = `${imagePrompt}
+
+REQUIREMENTS:
+- Modify ONLY the product in the reference image
+- Transformation strength: ${Math.round(strength * 100)}%
+- Clean white background
+- Professional product photography
+- Single product view
+- High resolution
+
+Generate ONLY the modified product image.`;
+
         const requestBody = {
             contents: [{
                 parts: [
                     { 
-                        text: await translateGeminiPrompt(`${imagePrompt}\n\n Reference Image Corruption Rate Setting: ${getStrengthDescription(strength)}\n\n ##Only the product in the reference image must be printed. Any description other than the image is prohibited. Please print the background in white. Please edit and edit only one view in the reference image according to the previous request.`) 
+                        text: finalPrompt  // 영어 그대로 사용
                     },
                     {
                         inlineData: {
@@ -1724,7 +1715,7 @@ async function generateImage(imagePrompt, refImageUrl, strength = 0.6) {
                 ]
             }],
             generationConfig: {
-                temperature: 0.7,
+                temperature: 0.4,  // 더 일관된 결과
                 maxOutputTokens: 8192,
                 candidateCount: 1
             }

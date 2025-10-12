@@ -54,6 +54,27 @@ function ResultPage() {
   const gptResponse = location.state?.gptResponse;
   const needsSaving = location.state?.needsSaving;
 
+  // 🔍 ResultPage에 전달된 데이터 로깅
+  useEffect(() => {
+    console.log('📄 ResultPage 마운트됨');
+    console.log('📦 전달받은 state 데이터:');
+    console.log('  - experimentId:', experimentId);
+    console.log('  - projectId:', projectId);
+    console.log('  - ideaId:', ideaId);
+    console.log('  - needsSaving:', needsSaving);
+    console.log('  - originalIdea:', originalIdea);
+    console.log('  - resultIdea:', resultIdea);
+    console.log('  - additiveType:', additiveType);
+    if (resultIdea) {
+      console.log('🎯 resultIdea 상세:');
+      console.log('    - id:', resultIdea.id);
+      console.log('    - generation:', resultIdea.generation);
+      console.log('    - title:', resultIdea.title);
+      console.log('    - imageUrl:', resultIdea.imageUrl);
+      console.log('    - type:', resultIdea.type);
+    }
+  }, [experimentId, projectId, ideaId, needsSaving, originalIdea, resultIdea, additiveType]);
+
   // generation 계산 함수
   // ⚠️ 주의: 과거 기록 보기 모드(needsSaving=false, isHistoryView=true)에서는
   // 현재 아이디어의 generation을 그대로 표시해야 함 (새로운 실험이 아니므로 +1 하지 않음)

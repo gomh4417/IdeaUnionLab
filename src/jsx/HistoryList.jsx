@@ -134,15 +134,18 @@ export default function HistoryList({
         sourceIdeaId: currentIdeaData.sourceIdeaId
       });
       
-      // 🔥 원재료 아이디어 ID 찾기
+      // 🔥 현재 아이디어의 계보(lineage) 추적
+      // 현재 아이디어부터 역순으로 원재료까지 모든 아이디어 ID를 수집
+      const lineageIdeaIds = [ideaId];
       let rootIdeaId = ideaId;
       
       if (currentIdeaType === 'generated' && currentIdeaData.sourceIdeaId) {
-        // 생성물인 경우 sourceIdeaId를 거슬러 올라가 원재료 찾기
         let tempId = currentIdeaData.sourceIdeaId;
         let iterationLimit = 10;
         
         while (iterationLimit > 0) {
+          lineageIdeaIds.push(tempId); // 계보에 추가
+          
           const tempRef = firestoreDoc(db, 'projects', projectId, 'ideas', tempId);
           const tempDoc = await getDoc(tempRef);
           
@@ -165,32 +168,53 @@ export default function HistoryList({
         }
       }
       
+      console.log('📍 현재 아이디어의 계보(lineage):', lineageIdeaIds);
       console.log('📍 실험을 조회할 원재료 아이디어 ID:', rootIdeaId);
+      console.log('📍 현재 보고 있는 아이디어 ID:', ideaId);
+      console.log('📍 현재 아이디어 generation:', currentIdeaData.generation);
       
       // 🔥 원재료 아이디어의 모든 experiments 조회
       const experimentsRef = firestoreCollection(db, 'projects', projectId, 'ideas', rootIdeaId, 'experiments');
       const experimentsSnapshot = await getDocs(experimentsRef);
       
+      console.log('📊 원재료에서 조회된 전체 실험 수:', experimentsSnapshot.size);
+      
       const experimentsData = [];
       experimentsSnapshot.forEach((doc) => {
         const data = doc.data();
         
+        const isInLineage = lineageIdeaIds.includes(data.resultIdeaId);
+        
+        console.log(`🔍 실험 검사 중 [${doc.id}]:`, {
+          generation: data.generation,
+          status: data.status,
+          resultIdeaId: data.resultIdeaId,
+          계보포함여부: isInLineage,
+          '현재아이디어와일치': data.resultIdeaId === ideaId
+        });
+        
         // 완료된 실험만 포함
         if (data.status === 'completed') {
-          // 🔥 원재료 아이디어의 모든 실험을 가져와서 표시
-          // 이유: 사용자가 3차 생성물의 히스토리를 볼 때, 1차→2차→3차 전체 흐름을 보여줘야 함
-          experimentsData.push({
-            id: doc.id,
-            ...data
-          });
-          console.log(`✅ ${data.generation}차 실험 로드 (ID: ${doc.id}, 실험 대상: ${data.sourceIdeaId}, 결과물: ${data.resultIdeaId})`);
+          // 🔥 중요: 현재 아이디어의 계보에 속한 실험만 필터링
+          // 실험의 resultIdeaId(생성된 결과물)가 계보에 포함되어 있는지 확인
+          if (isInLineage) {
+            experimentsData.push({
+              id: doc.id,
+              ...data
+            });
+            console.log(`✅ ${data.generation}차 실험 포함 - ID: ${doc.id}, 결과물: ${data.resultIdeaId}`);
+          } else {
+            console.log(`⏭️ ${data.generation}차 실험 제외 - ID: ${doc.id}, 결과물: ${data.resultIdeaId}`);
+          }
+        } else {
+          console.log(`⚠️ ${data.generation}차 실험 제외 (미완료) - ID: ${doc.id}, status: ${data.status}`);
         }
       });
       
       // generation 순으로 정렬 (오름차순: 1차→2차→3차)
       experimentsData.sort((a, b) => (a.generation || 0) - (b.generation || 0));
 
-      console.log('✅ 총 조회된 실험 수:', experimentsData.length);
+      console.log('✅ 총 조회된 실험 수 (계보 필터링 후):', experimentsData.length);
       
       setExperiments(experimentsData);
     } catch (error) {

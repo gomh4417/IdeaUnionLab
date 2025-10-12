@@ -225,7 +225,16 @@ export default function DropItem({
       }
       
       const ideaData = currentIdeaDoc.data();
-      console.log('📦 현재 아이디어 데이터:', ideaData);
+      console.log('📦 현재 아이디어 데이터:', {
+        id: ideaId,
+        generation: ideaData.generation,
+        type: ideaData.type,
+        title: ideaData.title,
+        sourceIdeaId: ideaData.sourceIdeaId,
+        sourceExperimentId: ideaData.sourceExperimentId,
+        'prop으로받은sourceExperimentId': sourceExperimentId,
+        '일치여부': ideaData.sourceExperimentId === sourceExperimentId
+      });
       
       // 🔥 원재료 아이디어 ID 찾기
       let rootIdeaId = ideaId;
@@ -258,10 +267,24 @@ export default function DropItem({
         }
       }
       
-      console.log('� 실험을 조회할 원재료 아이디어 ID:', rootIdeaId);
+      console.log('🔍 실험을 조회할 원재료 아이디어 ID:', rootIdeaId);
+      
+      // 🔥 현재 아이디어의 sourceExperimentId 사용 (props보다 Firebase 문서 데이터 우선!)
+      const actualSourceExperimentId = ideaData.sourceExperimentId || sourceExperimentId;
+      
+      if (!actualSourceExperimentId) {
+        alert('실험 ID를 찾을 수 없습니다.');
+        return;
+      }
+      
+      console.log('🆔 사용할 실험 ID:', {
+        'Firebase문서의sourceExperimentId': ideaData.sourceExperimentId,
+        'prop으로받은sourceExperimentId': sourceExperimentId,
+        '최종사용할ID': actualSourceExperimentId
+      });
       
       // 🔥 원재료 아이디어의 experiments 컬렉션에서 실험 문서 가져오기
-      const experimentRef = doc(db, 'projects', projectId, 'ideas', rootIdeaId, 'experiments', sourceExperimentId);
+      const experimentRef = doc(db, 'projects', projectId, 'ideas', rootIdeaId, 'experiments', actualSourceExperimentId);
       const experimentDoc = await getDoc(experimentRef);
       
       if (!experimentDoc.exists()) {
@@ -270,10 +293,20 @@ export default function DropItem({
       }
       
       const expData = experimentDoc.data();
-      console.log('📊 실험 데이터 로드 완료:', expData);
+      console.log('📊 실험 데이터 로드 완료:', {
+        experimentId: sourceExperimentId,
+        generation: expData.generation,
+        sourceIdeaId: expData.sourceIdeaId,
+        resultIdeaId: expData.resultIdeaId,
+        status: expData.status,
+        '현재아이디어ID': ideaId,
+        'resultIdeaId와일치': expData.resultIdeaId === ideaId
+      });
       
       // 🔥 결과 아이디어 문서 가져오기
       const resultIdeaId = expData.resultIdeaId || ideaId;
+      console.log(`🎯 결과 아이디어 ID 결정: ${resultIdeaId} (실험의 resultIdeaId: ${expData.resultIdeaId}, 현재 ideaId: ${ideaId})`);
+      
       const resultIdeaRef = doc(db, 'projects', projectId, 'ideas', resultIdeaId);
       const resultIdeaDoc = await getDoc(resultIdeaRef);
       
@@ -284,7 +317,20 @@ export default function DropItem({
       }
       
       const resultIdeaData = resultIdeaDoc.data();
-      console.log('🎯 결과 아이디어 데이터:', resultIdeaData);
+      console.log('🎯 결과 아이디어 데이터:', {
+        id: resultIdeaId,
+        generation: resultIdeaData.generation,
+        type: resultIdeaData.type,
+        title: resultIdeaData.title,
+        sourceIdeaId: resultIdeaData.sourceIdeaId,
+        sourceExperimentId: resultIdeaData.sourceExperimentId
+      });
+      
+      console.log('✅ 최종 ideaId 값 확인:', {
+        'props로받은ideaId': ideaId,
+        'resultIdeaId(사용할값)': resultIdeaId,
+        '타입확인': typeof resultIdeaId
+      });
       
       // Step 3 데이터 파싱
       let step3Data = {};
@@ -323,25 +369,36 @@ export default function DropItem({
         additiveType: ideaData.additiveType,
         generation: (expData.original_generation || ideaData.generation || 0),
         sourceIdeaId: ideaData.sourceIdeaId,
-        sourceExperimentId: sourceExperimentId,
+        sourceExperimentId: actualSourceExperimentId, // 🔥 actualSourceExperimentId 사용
         isHistoryView: true
       };
       
       // 🔥 실험 결과 아이디어 정보 (resultIdea) - DropItem 표시용
+      // ⚠️ 중요: resultIdeaData(실제 Firebase 문서)를 우선 사용!
+      // 3차 생성물의 sourceExperimentId가 2차 실험을 가리킬 수 있으므로
+      // expData가 아닌 resultIdeaData를 기준으로 해야 올바른 generation이 표시됨
       const resultIdeaForDisplay = {
         id: resultIdeaId,
-        title: expData.current_title || resultIdeaData.title,
-        description: expData.current_description || resultIdeaData.description,
-        imageUrl: resultImageUrl, // 🔥 실험 결과 이미지 사용!
+        title: resultIdeaData.title || expData.current_title,
+        description: resultIdeaData.description || expData.current_description,
+        imageUrl: resultIdeaData.imageUrl || resultImageUrl, // 🔥 Firebase 문서의 imageUrl 우선!
         type: 'generated',
-        additiveType: additiveTypeFromData,
-        generation: expData.generation || resultIdeaData.generation || 1, // 🔥 실험의 generation
-        sourceIdeaId: expData.sourceIdeaId,
-        sourceExperimentId: sourceExperimentId,
+        additiveType: resultIdeaData.additiveType || additiveTypeFromData,
+        generation: resultIdeaData.generation || expData.generation || 1, // 🔥 Firebase 문서의 generation 우선!
+        sourceIdeaId: resultIdeaData.sourceIdeaId || expData.sourceIdeaId,
+        sourceExperimentId: resultIdeaData.sourceExperimentId || sourceExperimentId,
         dalleGenerated: !!resultIdeaData.dalleGenerated,
         dalleError: resultIdeaData.dalleError || null,
         isHistoryView: true
       };
+      
+      console.log('🎯 resultIdeaForDisplay 생성:', {
+        'Firebase문서generation': resultIdeaData.generation,
+        '실험데이터generation': expData.generation,
+        '최종generation': resultIdeaForDisplay.generation,
+        'Firebase문서imageUrl': resultIdeaData.imageUrl,
+        '최종imageUrl': resultIdeaForDisplay.imageUrl
+      });
       
       console.log('🎯 ResultPage로 전달할 데이터:');
       console.log('  - originalIdea (실험 대상):', originalIdeaForResult);
@@ -350,11 +407,11 @@ export default function DropItem({
       // ResultPage로 이동 (과거 기록 보기 모드)
       navigate('/result', {
         state: {
-          experimentId: sourceExperimentId,
+          experimentId: actualSourceExperimentId,
           projectId,
-          ideaId: resultIdeaId,
-          originalIdea: originalIdeaForResult,
-          resultIdea: resultIdeaForDisplay,
+          ideaId: resultIdeaId, // 🔥 결과물 ID (현재 보고 있는 생성물)
+          originalIdea: originalIdeaForResult, // 🔥 실험 대상 아이디어 (부모 생성물)
+          resultIdea: resultIdeaForDisplay, // 🔥 실험 결과 아이디어 (현재 생성물)
           additiveType: additiveTypeFromData,
           additiveIntensity: expData.current_additiveIntensity || 0,
           referenceImage: expData.current_referenceImageUrl || null,
@@ -382,48 +439,7 @@ export default function DropItem({
             ].filter(step => step.title || step.description)
           },
           brandColor,
-          sourceImageUrl,
-          needsSaving: false
-        }
-      });
-      navigate('/result', {
-        state: {
-          experimentId: sourceExperimentId,
-          projectId,
-          ideaId: expData.sourceIdeaId || rootIdeaId,
-          originalIdea: originalIdeaForResult, // 현재 생성물의 정보를 originalIdea로 전달
-          sourceImageUrl: sourceImageUrl, // 🔥 실험 대상이었던 원본 이미지 URL 추가
-          // 실험 조건 정보
-          additiveType: additiveTypeFromData,
-          additiveIntensity: expData.current_additiveIntensity || 0,
-          referenceImage: expData.current_referenceImageUrl || null,
-          visionAnalysis: expData.current_visionAnalysis || null,
-          brandColor: brandColor, // 🎨 브랜드 컬러 전달
-          // ResultReport용 GPT 응답 복원
-          gptResponse: {
-            title: expData.current_title || '',
-            description: expData.current_description || '',
-            steps: [
-              {
-                title: expData.current_step1_title || '',
-                description: expData.current_step1_description || ''
-              },
-              {
-                title: expData.current_step2_title || '',
-                description: expData.current_step2_description || ''
-              },
-              {
-                title: expData.current_step3_title || '',
-                ...step3Data
-              },
-              {
-                title: expData.current_step4_title || '',
-                description: expData.current_step4_description || ''
-              }
-            ].filter(step => step.title || step.description)
-          },
-          brandColor,
-          sourceImageUrl,
+          sourceImageUrl, // 🔥 ResultReport step1에 표시될 실험 대상 이미지
           needsSaving: false
         }
       });
