@@ -17,6 +17,7 @@ const HomePageContainer = styled.div`
     width: 1194px;
     height: 834px;
     margin: 0 auto;
+    
     z-index: 1;
     
     /* 배경 이미지를 pseudo-element로 처리 */

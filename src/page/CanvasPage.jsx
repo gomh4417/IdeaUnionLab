@@ -10,6 +10,7 @@ import {
   generateImageWithStability,
 } from '../utils/Aiapi';
 import { uploadCanvasImage, uploadIflImage } from '../utils/firebaseStorage';
+import { getRecentUploadedImages } from '../utils/firebaseUpload';
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
 
@@ -66,7 +67,7 @@ const LeftCon = styled.div`
 const RightCon = styled.div`
   flex: 1;
   max-width: 804px;
-  max-height: 623px;
+  max-height: 576px;
   background: ${theme.colors.gray[100]};
   border-radius: ${theme.radius.medium};
   display: flex;
@@ -76,6 +77,9 @@ const RightCon = styled.div`
   overflow: hidden;
   width: 100%;
   height: 100%;
+  
+  /* 터치 스크롤 방지 (애플펜슬 사용 시) */
+  touch-action: none;
 `;
 
 const TitleInput = styled.input.attrs({ maxLength: 50 })`
@@ -102,7 +106,7 @@ const TitleInput = styled.input.attrs({ maxLength: 50 })`
 
 const ContentInput = styled.textarea`
   width: 100%;
-  height: 539px;
+  height: 491px;
   border-radius: ${theme.radius.small};
   border: none;
   outline: none;
@@ -136,6 +140,7 @@ const ToolBarWrap = styled.div`
   width: fit-content;
   margin: 0 auto;
   margin-top: 20px;
+  transform: translateX(-47px);
 `;
 
 const ToolbarBtn = styled.button`
@@ -209,6 +214,157 @@ const IflGenerateBtn = styled.button`
   &:disabled { background: ${theme.colors.gray[400]}; cursor: not-allowed; }
 `;
 
+// 펜/지우개 굵기 조절 슬라이더 컨테이너
+const WidthSliderContainer = styled.div`
+  position: absolute;
+  bottom: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 44px;
+  border-radius: ${theme.radius.max};
+  border: 1px solid ${theme.colors.primary};
+  background: #fff;
+  box-shadow: ${theme.shadow};
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 2px;
+`;
+
+const WidthSlider = styled.input.attrs({ type: 'range' })`
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: ${theme.colors.gray[300]};
+  border-radius: 2px;
+  outline: none;
+  
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: ${theme.colors.primary};
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  
+  &::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: ${theme.colors.primary};
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+`;
+
+const WidthIndicator = styled.div`
+  font-size: 14px;
+  font-weight: 500;
+  color: ${theme.colors.gray[900]};
+  min-width: 32px;
+  margin-left: -8px;
+  text-align: center;
+  font-family: 'Pretendard', sans-serif;
+`;
+
+// 이미지 선택 모달 (SaveSuccessOverlay와 동일한 스타일)
+const ImageSelectOverlay = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #00000040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+`;
+
+const ImageSelectModal = styled.div`
+  background: #ffffff;
+  backdrop-filter: blur(10px);
+  border-radius: ${theme.radius.large};
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  max-width: 800px;
+  min-height: 400px;
+  width: 100%;
+`;
+
+const ModalTitle = styled.div`
+  font-size: 20px;
+  font-weight: 600;
+  color: ${theme.colors.gray[900]};
+  font-family: 'Pretendard', sans-serif;
+`;
+
+const ImageGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(5, 140px);
+  gap: 12px;
+  width: 100%;
+  justify-content: center;
+`;
+
+const ImageItem = styled.div`
+  width: 140px;
+  height: 140px;
+  border-radius: ${theme.radius.small};
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid #eee;
+  transition: all 0.2s;
+  
+  &:hover {
+    border-color: ${theme.colors.primary};
+    transform: scale(1.05);
+  }
+  
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+`;
+
+const CloseButton = styled.button`
+  background: ${theme.colors.primary};
+  color: #fff;
+  border: none;
+  border-radius: ${theme.radius.max};
+  padding: 10px 24px;
+  font-size: 18px;
+  font-weight: 600;
+  font-family: 'Pretendard', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: absolute;
+  bottom: 24px;
+  
+  &:hover {
+    background: ${theme.colors.gray[300]};
+  }
+`;
+
+const EmptyMessage = styled.div`
+  font-size: 14px;
+  color: ${theme.colors.gray[500]};
+  font-family: 'Pretendard', sans-serif;
+  text-align: center;
+  padding: 40px 20px;
+`;
+
 const TOOLBAR_ICONS = [
   { type: 'pen', key: 'pen' },
   { type: 'eraser', key: 'eraser' },
@@ -240,8 +396,15 @@ function CanvasPage() {
   const [iflPrompt, setIflPrompt] = useState('');
   const [iflLoading, setIflLoading] = useState(false);
 
+  // 펜/지우개 굵기 조절
+  const [showWidthSlider, setShowWidthSlider] = useState(false);
+  const [penWidth, setPenWidth] = useState(8);
+
   const [penColor] = useState('#131313');
-  const [penWidth] = useState(8);
+
+  // 이미지 선택 모달
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState([]);
 
   const [lines, setLines] = useState([]);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -256,12 +419,46 @@ function CanvasPage() {
   // crossOrigin 'anonymous' 설정
   const [konvaImage, status] = useImage(imageUrl || undefined, 'anonymous');
   
-  // 이미지 로딩 상태 모니터링
+  // 이미지 크기 및 위치 계산 (비율 유지)
+  const [imageProps, setImageProps] = useState({ x: 0, y: 0, width: 804, height: 623 });
+  
+  // 이미지 로딩 상태 모니터링 및 비율 계산
   useEffect(() => {
     if (imageUrl) {
       console.log('🖼️ 이미지 URL 변경됨:', imageUrl.substring(0, 50) + '...');
       console.log('🖼️ Konva 이미지 로딩 상태:', status);
       console.log('🖼️ Konva 이미지 객체:', konvaImage ? '로드됨' : '로드되지 않음');
+    }
+    
+    if (konvaImage) {
+      const canvasWidth = 804;
+      const canvasHeight = 623;
+      const imgWidth = konvaImage.width;
+      const imgHeight = konvaImage.height;
+      
+      // 이미지 비율 계산
+      const imgRatio = imgWidth / imgHeight;
+      const canvasRatio = canvasWidth / canvasHeight;
+      
+      let newWidth, newHeight, x, y;
+      
+      if (imgRatio > canvasRatio) {
+        // 이미지가 캔버스보다 가로로 더 넓음 → width 기준으로 맞춤
+        newWidth = canvasWidth;
+        newHeight = canvasWidth / imgRatio;
+        x = 0;
+        y = (canvasHeight - newHeight) / 2;
+      } else {
+        // 이미지가 캔버스보다 세로로 더 김 → height 기준으로 맞춤
+        newHeight = canvasHeight;
+        newWidth = canvasHeight * imgRatio;
+        x = (canvasWidth - newWidth) / 2;
+        y = 0;
+      }
+      
+      setImageProps({ x, y, width: newWidth, height: newHeight });
+      console.log('📐 이미지 비율:', imgRatio, '캔버스 비율:', canvasRatio);
+      console.log('📏 조정된 크기:', { width: newWidth, height: newHeight, x, y });
     }
   }, [imageUrl, status, konvaImage]);
 
@@ -308,10 +505,11 @@ function CanvasPage() {
     }
   };
 
-  // 드로잉 핸들러
-  const handleMouseDown = (e) => {
+  // 드로잉 핸들러 (마우스 + 터치 통합)
+  const handleDrawStart = (e) => {
     if (activeTool === 'pen' || activeTool === 'eraser') {
       setIsDrawing(true);
+      setShowWidthSlider(false); // 그림 그리기 시작하면 슬라이더 닫기
       const pos = e.target.getStage().getPointerPosition();
       setLines((prev) => [
         ...prev,
@@ -324,7 +522,8 @@ function CanvasPage() {
       ]);
     }
   };
-  const handleMouseMove = (e) => {
+  
+  const handleDrawMove = (e) => {
     if (!isDrawing) return;
     const stage = e.target.getStage();
     const point = stage.getPointerPosition();
@@ -332,7 +531,8 @@ function CanvasPage() {
     const newPoints = [...lastLine.points, point.x, point.y];
     setLines([...lines.slice(0, -1), { ...lastLine, points: newPoints }]);
   };
-  const handleMouseUp = () => setIsDrawing(false);
+  
+  const handleDrawEnd = () => setIsDrawing(false);
 
   // 파일 업로드 → data URL로 변환
   const handleAddImg = (e) => {
@@ -347,13 +547,56 @@ function CanvasPage() {
     setStageKey((k) => k + 1);
   };
 
-  const handleToolbarClick = (type) => {
-    if (type === 'image') fileInputRef.current.click();
-    else if (type === 'undo') handleReplay();
+  const handleToolbarClick = async (type) => {
+    if (type === 'image') {
+      // 이미지 모달 열기 및 업로드 이미지 목록 가져오기
+      setShowImageModal(true);
+      setShowIflInput(false);
+      setShowWidthSlider(false);
+      
+      // Firebase Storage에서 최근 이미지 가져오기
+      const images = await getRecentUploadedImages();
+      setUploadedImages(images);
+    }
+    else if (type === 'undo') {
+      handleReplay();
+      setShowIflInput(false);
+      setShowWidthSlider(false);
+    }
     else if (type === 'ifl') {
       setShowIflInput(true);
+      setShowWidthSlider(false);
       setActiveTool(type);
-    } else setActiveTool(type);
+    }
+    else if (type === 'pen' || type === 'eraser') {
+      setShowWidthSlider(true);
+      setShowIflInput(false);
+      setActiveTool(type);
+    }
+    else {
+      setActiveTool(type);
+      setShowIflInput(false);
+      setShowWidthSlider(false);
+    }
+  };
+
+  // 이미지 선택 처리
+  const handleImageSelect = async (imageUrl) => {
+    try {
+      console.log('🖼️ 선택한 이미지:', imageUrl);
+      // Firebase Storage URL을 data URL로 변환
+      const dataUrl = await fetchToDataUrl(imageUrl);
+      setImageUrl(dataUrl);
+      setShowImageModal(false);
+    } catch (error) {
+      console.error('❌ 이미지 로드 실패:', error);
+      alert('이미지를 불러오는데 실패했습니다.');
+    }
+  };
+
+  const handleCloseImageModal = () => {
+    setShowImageModal(false);
+    setUploadedImages([]);
   };
 
   // IFL 프롬프트 처리
@@ -407,6 +650,7 @@ function CanvasPage() {
       setShowIflInput(false);
       setIflPrompt('');
       setActiveTool('pen');
+      setShowWidthSlider(true);  // 펜 도구로 돌아가면서 굵기 슬라이더 표시
     } catch (e) {
       console.error('❌ IFL 생성 실패:', e);
       alert(`아이디어 생성 중 오류가 발생했습니다: ${e.message}`);
@@ -465,17 +709,26 @@ function CanvasPage() {
                 height={623}
                 key={stageKey}
                 ref={stageRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}  // ← 카멜케이스
-                onMouseUp={handleMouseUp}      // ← 카멜케이스
-                style={{ width: 804, height: 623 }}
+                onMouseDown={handleDrawStart}
+                onMouseMove={handleDrawMove}
+                onMouseUp={handleDrawEnd}
+                onTouchStart={handleDrawStart}
+                onTouchMove={handleDrawMove}
+                onTouchEnd={handleDrawEnd}
+                style={{ width: 804, height: 623, touchAction: 'none' }}
               >
                 {/* 이미지 레이어 (지우개 영향 X) */}
                 <Layer listening={false}>
                   {imageUrl && konvaImage ? (
-                    <KonvaImage image={konvaImage} x={0} y={0} width={804} height={623} />
+                    <KonvaImage 
+                      image={konvaImage} 
+                      x={imageProps.x} 
+                      y={imageProps.y} 
+                      width={imageProps.width} 
+                      height={imageProps.height} 
+                    />
                   ) : imageUrl && !konvaImage ? (
-                    console.log('⚠️ 이미지 URL은 있지만 Konva 이미지가 로드되지 않음') || null
+                    console.log('이미지 URL은 있지만 Konva 이미지가 로드되지 않음') || null
                   ) : null}
                 </Layer>
 
@@ -631,6 +884,22 @@ function CanvasPage() {
                   </IflGenerateBtn>
                 </IflPromptContainer>
               )}
+              
+              {/* 펜/지우개 굵기 조절 슬라이더 */}
+              {(type === 'pen' || type === 'eraser') && showWidthSlider && activeTool === type && (
+                <WidthSliderContainer
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                >
+                  <WidthIndicator>{penWidth}</WidthIndicator>
+                  <WidthSlider
+                    min="2"
+                    max="30"
+                    value={penWidth}
+                    onChange={(e) => setPenWidth(Number(e.target.value))}
+                  />
+                </WidthSliderContainer>
+              )}
             </ToolbarBtn>
           ))}
         </ToolBarWrap>
@@ -782,6 +1051,36 @@ function CanvasPage() {
           disabled={loading}
         />
       </Container>
+
+      {/* 이미지 선택 모달 */}
+      {showImageModal && (
+        <ImageSelectOverlay onClick={handleCloseImageModal}>
+          <ImageSelectModal onClick={(e) => e.stopPropagation()}>
+            <ModalTitle>레퍼런스 이미지 선택</ModalTitle>
+            
+            {uploadedImages.length > 0 ? (
+              <ImageGrid>
+                {uploadedImages.map((img, index) => (
+                  <ImageItem
+                    key={index}
+                    onClick={() => handleImageSelect(img.url)}
+                    title={img.name}
+                  >
+                    <img src={img.url} alt={`업로드 이미지 ${index + 1}`} />
+                  </ImageItem>
+                ))}
+              </ImageGrid>
+            ) : (
+              <EmptyMessage>
+                아직 업로드된 이미지가 없습니다.<br />
+                upload.html 페이지에서 이미지를 업로드해주세요.
+              </EmptyMessage>
+            )}
+            
+            <CloseButton onClick={handleCloseImageModal}>닫기</CloseButton>
+          </ImageSelectModal>
+        </ImageSelectOverlay>
+      )}
     </OuterWrap>
   );
 }

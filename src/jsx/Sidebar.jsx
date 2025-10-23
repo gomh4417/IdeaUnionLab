@@ -36,7 +36,7 @@ const AddText = styled.span`
 `;
 const SidebarContainer = styled.div`
   width: 236px;
-  height: 720px;
+  height: 670px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
   padding: 10px 0px;
@@ -108,7 +108,7 @@ function BtnToggle({ active, onChange }) {
   );
 }
 
-export default function Sidebar({ projects, activatedId, onDeleteItem, projectId, onDragStateChange }) {
+export default function Sidebar({ projects, activatedId, onDeleteItem, projectId, onDragStateChange, onItemSelect }) {
   const [active, setActive] = useState('raw');
   const navigate = useNavigate();
   
@@ -162,6 +162,7 @@ export default function Sidebar({ projects, activatedId, onDeleteItem, projectId
             activatedIdx={getFilteredActiveIndex()}
             onDeleteItem={onDeleteItem}
             onDragStateChange={onDragStateChange}
+            onItemSelect={onItemSelect}
           />
         </ScrollableContent>
       </SidebarContainer>

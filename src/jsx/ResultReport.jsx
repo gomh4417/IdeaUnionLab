@@ -7,7 +7,7 @@ const ReportWrap = styled.div`
   max-height: 834px;
   overflow-y: scroll;
   transform: translateY(-80px);
-  padding-top: 92px;
+  padding-top: 88px;
   position: absolute;
   right: 40px;
 
@@ -22,6 +22,7 @@ const LineWrap = styled.div`
   min-height: 3360px;
   transform: translateY(-92px);
   position: absolute;
+  margin-left: 6px;
 `;
 
 const Line = styled.div`
@@ -47,8 +48,9 @@ const Circle = styled.div`
   border-radius: 50%;
   background: ${({ $active, $brandcolor }) => $active ? $brandcolor : '#A1A1A1'};
   position: relative;
-  left: -48px;
+  left: -42px;
   transition: background 0.2s;
+  
 `;
 
 const Step = styled.div`
@@ -106,7 +108,7 @@ const StepTitle = styled.h5`
   font-weight: 500;
   line-height: 24px;
   color: #333333;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 `;
 
 const StepContent = styled.h5`
@@ -124,7 +126,7 @@ const OriginImgBox = styled.div`
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
   border-radius: ${({ theme }) => theme.radius.small};
   overflow: hidden;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
   
   img {
     width: 100%;

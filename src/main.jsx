@@ -12,12 +12,13 @@ const Wrapper = styled.div`
   width: 100vw;
   max-width: 1194px;
   height: 100vh;
-  max-height: 834px;
+  max-height: 100vh;
   overflow: hidden;
   box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.5);
   position: relative;
-  margin-left: 250px;
-  margin-top:70px;
+  margin-bottom: 20px;
+  
+  touch-action: none;
 `
 
 import HomePage from './page/HomePage'

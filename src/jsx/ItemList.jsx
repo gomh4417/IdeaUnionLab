@@ -1,6 +1,6 @@
 import Item from './Item';
 
-export default function ItemList({ items = [], activatedIdx = null, onDeleteItem, originalItems = [], onDragStateChange }) {
+export default function ItemList({ items = [], activatedIdx = null, onDeleteItem, originalItems = [], onDragStateChange, onItemSelect }) {
   // ID 기반 삭제 함수
   const handleDelete = (filteredIndex) => {
     const targetItem = items[filteredIndex];
@@ -26,6 +26,7 @@ export default function ItemList({ items = [], activatedIdx = null, onDeleteItem
           onDelete={handleDelete}
           itemData={item}
           onDragStateChange={onDragStateChange}
+          onItemSelect={onItemSelect}
         />
       ))}
     </div>

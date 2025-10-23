@@ -29,6 +29,30 @@ const ContentWrap = styled.div`
   gap: 40px;
 `;
 
+const SaveSuccessOverlay = styled.div`
+  position: fixed;
+  top: 50vh;
+  left: 50vw;
+  transform: translate(-50%, -50%);
+  background: #00000040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+`;
+
+const SaveSuccessModal = styled.div`
+  background: #ffffff98;
+  backdrop-filter: blur(10px);
+  padding: 32px 48px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #222;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+`;
+
 // undefined / 함수 제거용 (Firestore에 안전)
 const clean = (obj) => JSON.parse(JSON.stringify(obj || null));
 
@@ -40,6 +64,7 @@ function ResultPage() {
   const [improvedIdea, setImprovedIdea] = useState(null);
   const [loadingImprovedInfo, setLoadingImprovedInfo] = useState(false);
   const [loadingExit, setLoadingExit] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
 
   // LabPage에서 전달된 값
   const experimentId = location.state?.experimentId;
@@ -552,8 +577,14 @@ function ResultPage() {
       await setDoc(newIdeaRef, { sourceExperimentId: finalExperimentId }, { merge: true });
       console.log('✅ 생성물 아이디어의 sourceExperimentId 업데이트 완료:', finalExperimentId);
 
-      alert('실험 결과가 성공적으로 저장되었습니다!');
-      navigate('/lab', { state: { projectId } });
+      // 저장 성공 모달 표시
+      setShowSaveSuccess(true);
+      
+      // 2초 후 LabPage로 이동
+      setTimeout(() => {
+        navigate('/lab', { state: { projectId } });
+      }, 2000);
+      
     } catch (error) {
       console.error('❌ 실험 결과 저장 실패:', error);
       alert(`저장 중 오류가 발생했습니다: ${error.message}`);
@@ -647,6 +678,15 @@ function ResultPage() {
             style={{ position: 'absolute', right: 32, bottom: 36 }}
           />
         </>
+      )}
+      
+      {/* 저장 성공 모달 */}
+      {showSaveSuccess && (
+        <SaveSuccessOverlay>
+          <SaveSuccessModal>
+            실험 결과가 성공적으로 저장되었습니다!
+          </SaveSuccessModal>
+        </SaveSuccessOverlay>
       )}
     </LayoutWrap>
   );

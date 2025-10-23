@@ -90,7 +90,7 @@ const ImgContainer = styled.div`
   border-radius: ${({ theme }) => theme.radius.small};
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
   overflow: hidden;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,6 +167,22 @@ const Title = styled.div`
   align-self: flex-start;
 `;
 
+const SkeletonTitle = styled.div`
+  width: 180px;
+  height: 28px;
+  background: ${({ theme }) => theme.colors.gray[200]};
+  border-radius: ${({ theme }) => theme.radius.small};
+  margin-bottom: 6px;
+  align-self: flex-start;
+  animation: shimmer 1.5s infinite;
+  
+  @keyframes shimmer {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
+  }
+`;
+
 const Content = styled.div`
   font-size: 16px;
   font-weight: 300;
@@ -174,12 +190,33 @@ const Content = styled.div`
   line-height: 24px;
   text-align: justify;
   width: 100%;
-  max-height: 172px;
+  max-height: 140px;
   overflow-y: scroll;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */
   &::-webkit-scrollbar {
     display: none; /* Chrome, Safari, Opera */
+  }
+`;
+
+const SkeletonContent = styled.div`
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+`;
+
+const SkeletonLine = styled.div`
+  width: ${({ $width }) => $width || '100%'};
+  height: ${({ $height }) => $height || '20px'};
+  background: ${({ theme }) => theme.colors.gray[300]};
+  border-radius: ${({ theme }) => theme.radius.small};
+  animation: shimmer 1.5s infinite;
+  
+  @keyframes shimmer {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
   }
 `;
 
@@ -203,6 +240,9 @@ export default function DropItem({
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  
+  // 로딩 상태를 지연시키기 위한 내부 상태
+  const [displayLoading, setDisplayLoading] = useState(loading);
 
   // 히스토리 버튼 클릭 핸들러
   const handleHistoryClick = async () => {
@@ -466,16 +506,30 @@ export default function DropItem({
   
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   
+  // 로딩 완료 후 1.5초 지연 처리
+  useEffect(() => {
+    if (loading) {
+      // 로딩 시작 시 즉시 표시
+      setDisplayLoading(true);
+    } else {
+      // 로딩 완료 후 1.5초 뒤에 숨김
+      const timer = setTimeout(() => {
+        setDisplayLoading(false);
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [loading]);
   
   useEffect(() => {
-    if (!loading) return;
+    if (!displayLoading) return;
     
     const interval = setInterval(() => {
       setCurrentTextIndex((prev) => (prev + 1) % subTexts.length);
     }, 6000);
     
     return () => clearInterval(interval);
-  }, [loading, subTexts.length]);
+  }, [displayLoading, subTexts.length]);
   
   let brandColor = theme.colors.brand[1];
   if (additiveType) {
@@ -534,7 +588,7 @@ export default function DropItem({
           <Image src={imageUrl} alt={title} />
           
           {/* 로딩 오버레이 */}
-          {loading && (
+          {displayLoading && (
             <LoadingOverlay
               initial={
                 pageType === 'result' 
@@ -603,8 +657,22 @@ export default function DropItem({
         </ChipRow>
       )}
       
-      <Title>{title}</Title>
-      <Content>{content}</Content>
+      {/* 로딩 중일 때 스켈레톤 UI 표시 */}
+      {displayLoading ? (
+        <>
+          <SkeletonContent>
+            <SkeletonLine $width="50%" $height="28px" />
+            <SkeletonLine $width="100%" />
+            <SkeletonLine $width="100%" />
+            <SkeletonLine $width="100%" />
+          </SkeletonContent>
+        </>
+      ) : (
+        <>
+          <Title>{title}</Title>
+          <Content>{content}</Content>
+        </>
+      )}
     </Container>
   );
 }

@@ -1,6 +1,5 @@
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
-import { useRef, useState } from 'react';
 
 const ICONS = {
     creativity: '/creativity.svg',
@@ -105,68 +104,13 @@ const ExpandImg = styled.img`
     object-fit: contain;
 `;
 
-export default function Additives({ type, active, onClick, referenceImage, setReferenceImage }) {
-    const [uploadedImg, setUploadedImg] = useState(null);
-    const fileInputRef = useRef();
-
-    // 파일 업로드 핸들러 - Firebase Storage 활용으로 개선
-    const handleFileChange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        // 파일 크기 제한 (20MB)
-        const maxSize = 20 * 1024 * 1024; // 20MB
-        if (file.size > maxSize) {
-            alert('파일 크기는 20MB 이하여야 합니다.');
-            return;
-        }
-        
-        const ext = file.name.split('.').pop().toLowerCase();
-        if (ext !== 'png' && ext !== 'jpg' && ext !== 'jpeg') {
-            alert('PNG 또는 JPG 파일만 업로드할 수 있습니다.');
-            return;
-        }
-        
-        try {
-            // 로딩 상태 표시를 위한 임시 이미지 (Base64)
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                setUploadedImg(ev.target.result); // 미리보기용
-            };
-            reader.readAsDataURL(file);
-            
-            // Firebase Storage에 업로드
-            const { uploadDataUrl } = await import('../utils/firebaseStorage');
-            
-            // 파일을 Base64로 변환
-            const fileReader = new FileReader();
-            const dataURL = await new Promise((resolve) => {
-                fileReader.onload = (e) => resolve(e.target.result);
-                fileReader.readAsDataURL(file);
-            });
-            
-            // Firebase Storage에 업로드 (타임스탬프로 고유 경로 생성)
-            const timestamp = new Date().getTime();
-            const storagePath = `reference-images/${timestamp}_${file.name}`;
-            const downloadURL = await uploadDataUrl(dataURL, storagePath);
-            
-            console.log('✅ 레퍼런스 이미지 Firebase Storage 업로드 완료:', downloadURL);
-            
-            // 심미성 첨가제일 때만 부모 상태에 Firebase URL 저장
-            if (type === 'aesthetics' && setReferenceImage) {
-                setReferenceImage(downloadURL); // Base64 대신 Firebase URL 저장
-            }
-            
-        } catch (error) {
-            console.error('❌ 레퍼런스 이미지 업로드 실패:', error);
-            alert('이미지 업로드에 실패했습니다. 다시 시도해주세요.');
-        }
-    };
-
-    // 업로드 박스 클릭 시 파일 선택창 열기
+export default function Additives({ type, active, onClick, referenceImage, setReferenceImage, onOpenImageModal }) {
+    // 업로드 박스 클릭 시 Firebase Storage 이미지 모달 열기
     const handleUploadBoxClick = (e) => {
         e.stopPropagation(); // 부모 onClick 방지
-        if (fileInputRef.current) fileInputRef.current.click();
+        if (onOpenImageModal) {
+            onOpenImageModal();
+        }
     };
 
     return (
@@ -183,19 +127,12 @@ export default function Additives({ type, active, onClick, referenceImage, setRe
             {active && (
                 type === 'aesthetics' ? (
                     <ExpandImgBox $color={ACTIVE_COLORS[type]} style={{border: '1px dashed #a1a1a1', background: '#fff'}}>
-                        {uploadedImg || referenceImage ? (
-                            <ExpandImg src={uploadedImg || referenceImage} alt="업로드 이미지" />
+                        {referenceImage ? (
+                            <ExpandImg src={referenceImage} alt="업로드 이미지" />
                         ) : (
                             <UploadBox $color={ACTIVE_COLORS[type]} onClick={handleUploadBoxClick}>
                                 <UploadIcon className="material-symbols-outlined">upload</UploadIcon>
                                 <UploadText>레퍼런스 이미지를 선택해주세요</UploadText>
-                                <input
-                                    type="file"
-                                    accept="image/png, image/jpg, image/jpeg"
-                                    style={{ display: 'none' }}
-                                    ref={fileInputRef}
-                                    onChange={handleFileChange}
-                                />
                             </UploadBox>
                         )}
                     </ExpandImgBox>

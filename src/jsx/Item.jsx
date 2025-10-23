@@ -100,7 +100,8 @@ export default function Item({
   onDelete,
   tags = [],
   itemData,
-  onDragStateChange,   
+  onDragStateChange,
+  onItemSelect,
 }) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'ITEM',
@@ -119,17 +120,79 @@ export default function Item({
 
   // 슬라이드 상태 관리
   const [slid, setSlid] = useState(false);
+  
+  // 스와이프 제스처 감지 상태
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  
+  // 최소 스와이프 거리 (픽셀)
+  const minSwipeDistance = 50;
 
   // DeleteArea 클릭 시 슬라이드
   const handleDeleteAreaClick = (e) => {
     e.stopPropagation();
     setSlid(true);
   };
-  // ItemWrap 클릭 시 슬라이드 해제
+  
+  // 터치 시작
+  const handleTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  
+  // 터치 이동
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  
+  // 터치 종료 - 스와이프 감지
+  const handleTouchEnd = (e) => {
+    if (!touchStart || !touchEnd) {
+      // 터치 이동이 없었으면 탭으로 간주
+      if (!slid && onItemSelect && itemData) {
+        onItemSelect(itemData);
+      }
+      setTouchStart(null);
+      setTouchEnd(null);
+      return;
+    }
+    
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    
+    if (isLeftSwipe) {
+      // 왼쪽으로 스와이프 -> 삭제 버튼 표시
+      e.stopPropagation();
+      setSlid(true);
+    } else if (isRightSwipe && slid) {
+      // 오른쪽으로 스와이프 -> 삭제 버튼 숨김
+      e.stopPropagation();
+      setSlid(false);
+    } else if (!slid && Math.abs(distance) < 10) {
+      // 스와이프가 아닌 탭인 경우 -> 아이템 선택
+      if (onItemSelect && itemData) {
+        onItemSelect(itemData);
+      }
+    }
+    
+    // 초기화
+    setTouchStart(null);
+    setTouchEnd(null);
+  };
+  
+  // ItemWrap 클릭 시 처리 (PC용)
   const handleItemWrapClick = (e) => {
     if (slid) {
+      // 슬라이드 상태일 때는 슬라이드 해제만
       setSlid(false);
       e.stopPropagation();
+    } else {
+      // 슬라이드 상태가 아닐 때는 아이템 선택 (PC 클릭)
+      e.stopPropagation();
+      if (onItemSelect && itemData) {
+        onItemSelect(itemData);
+      }
     }
   };
 
@@ -150,6 +213,9 @@ export default function Item({
         cursor: isDragging ? 'grabbing' : 'grab' 
       }}
       onClick={handleItemWrapClick}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       <ImgBox>
         {imageUrl && <Img src={imageUrl} alt="item" />}

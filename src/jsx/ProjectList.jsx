@@ -12,7 +12,7 @@ const CarouselContainer = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 40px;
+  margin-top: 16px;
   position: relative;
 `;
 
@@ -200,6 +200,25 @@ export default function ProjectList() {
       return () => container.removeEventListener('scroll', handleScroll);
     }
   }, [handleScroll]);
+
+  // 초기 로드 시 첫 번째 아이템(최신 프로젝트)을 중앙에 배치
+  useEffect(() => {
+    if (projects.length > 0 && carouselRef.current && itemRefs.current[0]) {
+      const container = carouselRef.current;
+      const firstItem = itemRefs.current[0];
+      
+      // 첫 번째 아이템의 중앙 위치 계산
+      const itemCenter = firstItem.offsetLeft + firstItem.offsetWidth / 2;
+      const containerCenter = container.offsetWidth / 2;
+      const scrollPosition = itemCenter - containerCenter;
+      
+      // 즉시 스크롤 (애니메이션 없이)
+      container.scrollTo({
+        left: scrollPosition,
+        behavior: 'auto'
+      });
+    }
+  }, [projects.length]); // projects 로드 완료 후 실행
 
   // 아이템 클릭 시 해당 아이템으로 스크롤 (지연된 포커스 변경)
   const handleItemClick = useCallback((index) => {

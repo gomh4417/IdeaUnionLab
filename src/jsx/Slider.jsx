@@ -73,11 +73,20 @@ const StepArea = styled.div`
 export default function Slider({ type = 'creativity', value = 0, onChange, onTouch }) {
   const [dragging, setDragging] = useState(false);
   const [internalValue, setInternalValue] = useState(value);
+  const [dragPosition, setDragPosition] = useState(value); // 드래그 중 실시간 위치
   const trackRef = useRef(null);
+
+  // 가장 가까운 단계로 스냅
+  const snapToNearestStep = (percent) => {
+    if (percent < 0.25) return 0;      // 0~25% → step 0
+    else if (percent < 0.75) return 1; // 25~75% → step 1
+    else return 2;                      // 75~100% → step 2
+  };
 
   // update parent on drag end
   const commitValue = (val) => {
     setInternalValue(val);
+    setDragPosition(val);
     if (onChange) onChange(val);
     if (onTouch) onTouch(); // 슬라이더 터치 이벤트 발생
   };
@@ -87,21 +96,25 @@ export default function Slider({ type = 'creativity', value = 0, onChange, onTou
     setDragging(true);
     e.preventDefault();
   };
+  
   const handlePointerUp = () => {
-    setDragging(false);
-    if (onChange) onChange(internalValue);
-    if (onTouch) onTouch(); // 드래그 종료 시에도 터치 이벤트 발생
-  };
-  const handlePointerMove = (e) => {
     if (!dragging) return;
+    setDragging(false);
+    // 드래그 종료 시 가장 가까운 단계로 스냅
+    const snappedValue = dragPosition;
+    commitValue(snappedValue);
+  };
+  
+  const handlePointerMove = (e) => {
+    if (!dragging || !trackRef.current) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const rect = trackRef.current.getBoundingClientRect();
     let percent = (clientX - rect.left) / rect.width;
     percent = Math.max(0, Math.min(1, percent));
-    let step = 0;
-    if (percent <= 0.33) step = 0;
-    else if (percent <= 0.67) step = 1;
-    else step = 2;
+    
+    // 드래그 중에는 가장 가까운 단계로 즉시 스냅
+    const step = snapToNearestStep(percent);
+    setDragPosition(step);
     setInternalValue(step);
   };
 
@@ -111,10 +124,8 @@ export default function Slider({ type = 'creativity', value = 0, onChange, onTou
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     let percent = (clientX - rect.left) / rect.width;
     percent = Math.max(0, Math.min(1, percent));
-    let step = 0;
-    if (percent <= 0.33) step = 0;
-    else if (percent <= 0.67) step = 1;
-    else step = 2;
+    
+    const step = snapToNearestStep(percent);
     commitValue(step);
   };
 
@@ -124,19 +135,30 @@ export default function Slider({ type = 'creativity', value = 0, onChange, onTou
 
   React.useEffect(() => {
     if (!dragging) return;
-    const move = (e) => handlePointerMove(e);
-    const up = (e) => handlePointerUp(e);
-    window.addEventListener('mousemove', move);
-    window.addEventListener('mouseup', up);
-    window.addEventListener('touchmove', move);
-    window.addEventListener('touchend', up);
+    
+    const move = (e) => {
+      e.preventDefault(); // 기본 동작 방지
+      handlePointerMove(e);
+    };
+    
+    const up = (e) => {
+      e.preventDefault(); // 기본 동작 방지
+      handlePointerUp();
+    };
+    
+    // 전역 이벤트 리스너 등록 (슬라이더 밖에서도 감지)
+    window.addEventListener('mousemove', move, { passive: false });
+    window.addEventListener('mouseup', up, { passive: false });
+    window.addEventListener('touchmove', move, { passive: false });
+    window.addEventListener('touchend', up, { passive: false });
+    
     return () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
       window.removeEventListener('touchmove', move);
       window.removeEventListener('touchend', up);
     };
-  }, [dragging]);
+  }, [dragging, dragPosition]); // dragPosition 의존성 추가
 
   return (
     <SliderWrap>

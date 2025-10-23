@@ -47,6 +47,7 @@ const DropArea = styled.div`
   justify-content: center;
   padding-bottom: 24px;
   transition: border 0.2s;
+  max-height: 670px;
   z-index: 20;
   &.hover {
     border: 2px dashed ${theme.colors.gray[500]};
@@ -57,7 +58,7 @@ const Stage = styled.div`
   position: absolute;
   width: 840px;
   height: 724px;
-  margin-left: 280px;
+  margin-left: 268px;
 `;
 
 const DropOverlay = styled(DropArea)`
@@ -173,6 +174,44 @@ function LabPage() {
     setSliderTouched(false);
     setReferenceImage(null);
     setImprovedProduct(null);
+  };
+
+  // 모바일 탭 또는 클릭으로 아이템 선택하는 핸들러
+  const handleItemSelect = (item) => {
+    const isNewItem = item.id !== activatedId;
+    
+    // 새로운 아이템이거나 첫 번째 선택인 경우
+    if (!dropped || isNewItem) {
+      setDropped(true);
+      setIsItemOver(false);
+      setActivatedId(item.id);
+      
+      // 선택된 아이템 데이터 저장
+      if (item) {
+        // imageUrl 유효성 검증
+        if (!item.imageUrl || typeof item.imageUrl !== 'string' || item.imageUrl.trim() === '') {
+          console.error('⚠️ Firebase 데이터에서 imageUrl 찾을 수 없음:', {
+            id: item.id,
+            title: item.title,
+            imageUrl: item.imageUrl,
+            전체데이터: item
+          });
+          alert(`선택한 아이디어 "${item.title || 'Unknown'}"에 이미지 URL이 없습니다.\nFirebase에서 imageUrl 필드를 확인해주세요.`);
+        }
+        
+        setSelectedItem(item);
+        if (import.meta.env.DEV) {
+          console.log('📋 아이템 선택:', item.title, '| ImageURL 유효:', !!(item.imageUrl && item.imageUrl.trim()));
+        }
+      }
+      
+      // 새로운 아이템이 선택되면 첨가제 관련 상태 초기화
+      setSelectedAdditive(null);
+      setSliderValue(0);
+      setSliderTouched(false);
+      setReferenceImage(null);
+      setImprovedProduct(null);
+    }
   };
 
   // 프로젝트 정보 로드 (메모이제이션으로 중복 호출 방지)
@@ -414,7 +453,8 @@ function LabPage() {
           setActivatedId={setActivatedId}
           onDeleteItem={handleDeleteItem}
           projectId={projectId}
-          onDragStateChange={setIsDraggingItem} 
+          onDragStateChange={setIsDraggingItem}
+          onItemSelect={handleItemSelect}
         />
 
         {/* 무대(Container) 위에 DropItem을 깔고, 그 위에 DropOverlay를 올림 */}
@@ -450,7 +490,7 @@ function LabPage() {
                   아이디어 선택하기
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 400, color: theme.colors.gray[400] }}>
-                  리스트에서 아이디어를 드래그하여 이곳에 드롭해 주세요
+                  리스트에서 아이디어를 탭하거나 <br />드래그하여 우측 영역에 드롭해 주세요
                 </div>
               </div>
             </DropArea>

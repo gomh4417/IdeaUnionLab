@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>이미지 업로드 - IdeaUnionLab</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      min-height: 100vh;
+      overflow-x: hidden;
+      padding: 20px 28px;
+      margin: 0;
+    }
+    
+    /* 헤더 영역 - Fixed Top */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 20px;
+      box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.08);
+      z-index: 1000;
+    }
+    
+    .title {
+      font-size: 20px;
+      font-weight: 600;
+      color: #020202;
+      text-align: center;
+      margin-bottom: 4px;
+    }
+    
+    .subtitle {
+      font-size: 13px;
+      color: #A1A1A1;
+      text-align: center;
+    }
+    
+    /* 메인 컨테이너 */
+    .container {
+      width: 100%;
+      min-height: 100vh;
+      padding-top: 20px;
+      padding-bottom: 80px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    /* 업로드 영역 */
+    .upload-area {
+      width: calc(100% - 32px);
+      max-width: 420px;
+      margin: 0 16px;
+    }
+    
+    .file-input-wrapper {
+      width: 100%;
+      position: relative;
+    }
+    
+    /* 파일 선택 라벨 - 기본 상태 */
+    .file-input-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      max-height: 70vh;
+      border: 2px dashed #D0D0D0;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.3s;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .file-input-label:active {
+      transform: scale(0.98);
+    }
+    
+    /* 파일 선택 시 */
+    .file-input-label.has-file {
+      border: 2px solid #007AFF;
+      padding: 0;
+    }
+    
+    input[type="file"] {
+      display: none;
+    }
+    
+    /* 업로드 아이콘 및 텍스트 */
+    .upload-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      transition: opacity 0.3s;
+    }
+    
+    .upload-content.hidden {
+      display: none;
+    }
+    
+    .upload-icon {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 16px;
+    }
+    
+    .upload-text {
+      font-size: 16px;
+      font-weight: 500;
+      color: #555555;
+      margin-bottom: 8px;
+    }
+    
+    .upload-hint {
+      font-size: 13px;
+      color: #A1A1A1;
+    }
+    
+    /* 미리보기 이미지 */
+    .preview-image {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+      border-radius: 10px;
+    }
+    
+    .preview-image.show {
+      display: block;
+    }
+    
+    /* 파일 정보 */
+    .preview-info {
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: #ffffff;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 6px 12px;
+      border-radius: 20px;
+      white-space: nowrap;
+      max-width: 90%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: none;
+    }
+    
+    .preview-info.show {
+      display: block;
+    }
+    
+    /* 전송 버튼 - Fixed Bottom */
+    .submit-button {
+      position: fixed;
+      bottom: 3vh;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      width: 80%;
+      height: 56px;
+      border-radius: 12px;
+      background: #007AFF;
+      box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.13), 0px 0px 4px rgba(0, 0, 0, 0.1);
+      color: #fff;
+      font-size: 20px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      font-family: 'Pretendard', sans-serif;
+      z-index: 999;
+    }
+    
+    .submit-button:active:not(:disabled) {
+      transform: translateX(-50%) scale(0.98);
+    }
+    
+    .submit-button:disabled {
+      background: #E0E0E0;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    
+    /* 상태 메시지 */
+    .status-message {
+      position: fixed;
+      top: 100px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      max-width: 388px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      text-align: center;
+      display: none;
+      animation: slideIn 0.3s ease-out;
+      z-index: 1001;
+    }
+    
+    .status-message.show {
+      display: block;
+    }
+    
+    .status-message.loading {
+      background: #F5F8FF;
+      color: #007AFF;
+      border: 1px solid #007AFF;
+    }
+    
+    .status-message.success {
+      background: #E8F5E9;
+      color: #2E7D32;
+      border: 1px solid #4CAF50;
+    }
+    
+    .status-message.error {
+      background: #FFEBEE;
+      color: #C62828;
+      border: 1px solid #FF3C3C;
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #007AFF;
+      border-top: 2px solid transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+    
+    /* 모바일 최적화 (365px ~ 420px) */
+    @media (max-width: 420px) and (min-width: 365px) {
+      .header {
+        padding: 16px;
+      }
+      
+      .title {
+        font-size: 18px;
+      }
+      
+      .subtitle {
+        font-size: 12px;
+      }
+      
+      .container {
+        padding-top: 32px;
+        padding-bottom: 90px;
+      }
+      
+      .upload-icon {
+        width: 56px;
+        height: 56px;
+      }
+      
+      .upload-text {
+        font-size: 15px;
+      }
+      
+      .upload-hint {
+        font-size: 12px;
+      }
+      
+      .submit-button {
+        height: 52px;
+        font-size: 17px;
+      }
+    }
+    
+    @media (max-width: 364px) {
+      .header {
+        padding: 14px;
+      }
+      
+      .title {
+        font-size: 17px;
+      }
+      
+      .subtitle {
+        font-size: 11px;
+      }
+      
+      .upload-icon {
+        width: 48px;
+        height: 48px;
+      }
+      
+      .upload-text {
+        font-size: 14px;
+      }
+      
+      .upload-hint {
+        font-size: 11px;
+      }
+      
+      .submit-button {
+        height: 50px;
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Fixed Header -->
+  <div class="header">
+    <h1 class="title">레퍼런스 이미지 업로드</h1>
+    <p class="subtitle">캔버스에서 사용할 이미지를 업로드하세요</p>
+  </div>
+  
+  <!-- Main Container -->
+  <div class="container">
+    <div class="upload-area">
+      <div class="file-input-wrapper">
+        <label for="fileInput" class="file-input-label" id="fileLabel">
+          <div class="upload-content" id="uploadContent">
+            <svg class="upload-icon" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M32 8L32 40" stroke="#007AFF" stroke-width="4" stroke-linecap="round"/>
+              <path d="M20 20L32 8L44 20" stroke="#007AFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 32V52C12 54.2091 13.7909 56 16 56H48C50.2091 56 52 54.2091 52 52V32" stroke="#007AFF" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+            <div class="upload-text">이미지 선택하기</div>
+            <div class="upload-hint">JPG, PNG 파일을 선택하세요</div>
+          </div>
+          <img id="previewImage" class="preview-image" src="" alt="미리보기" />
+          <div class="preview-info" id="previewInfo"></div>
+        </label>
+        <input type="file" id="fileInput" accept="image/jpeg,image/jpg,image/png" />
+      </div>
+    </div>
+  </div>
+  
+  <!-- Fixed Bottom Button -->
+  <button class="submit-button" id="submitButton" disabled>전송</button>
+  
+  <!-- Status Message -->
+  <div class="status-message" id="statusMessage"></div>
+
+  <!-- Firebase SDK (v10.7.1) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+    import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+
+    // Firebase 설정
+    const firebaseConfig = {
+      apiKey: "AIzaSyBnF25VgSr65VWo6ZXKdmPaYnJ8WJTM7DQ",
+      authDomain: "ideaunionlab.firebaseapp.com",
+      projectId: "ideaunionlab",
+      storageBucket: "ideaunionlab.firebasestorage.app",
+      messagingSenderId: "1071677255842",
+      appId: "1:1071677255842:web:6dfc9cb5c7f0a5ec65fbc1",
+      measurementId: "G-SRRSHXPJP7"
+    };
+
+    // Firebase 초기화
+    const app = initializeApp(firebaseConfig);
+    const storage = getStorage(app);
+
+    // DOM 요소
+    const fileInput = document.getElementById('fileInput');
+    const fileLabel = document.getElementById('fileLabel');
+    const submitButton = document.getElementById('submitButton');
+    const uploadContent = document.getElementById('uploadContent');
+    const previewImage = document.getElementById('previewImage');
+    const previewInfo = document.getElementById('previewInfo');
+    const statusMessage = document.getElementById('statusMessage');
+
+    let selectedFile = null;
+
+    // 상태 메시지 표시
+    function showStatus(type, message) {
+      statusMessage.className = `status-message show ${type}`;
+      statusMessage.innerHTML = message;
+      
+      if (type === 'success') {
+        setTimeout(() => {
+          statusMessage.className = 'status-message';
+        }, 3000);
+      }
+    }
+
+    // 파일 크기 포맷팅
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // 파일 선택 처리
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      
+      if (!file) {
+        selectedFile = null;
+        submitButton.disabled = true;
+        uploadContent.classList.remove('hidden');
+        previewImage.classList.remove('show');
+        previewInfo.classList.remove('show');
+        fileLabel.classList.remove('has-file');
+        return;
+      }
+
+      // 파일 타입 검증
+      if (!file.type.match('image/(jpeg|jpg|png)')) {
+        showStatus('error', '❌ JPG 또는 PNG 파일만 업로드 가능합니다.');
+        fileInput.value = '';
+        return;
+      }
+
+      // 파일 크기 검증 (10MB 제한)
+      if (file.size > 10 * 1024 * 1024) {
+        showStatus('error', '❌ 파일 크기는 10MB 이하여야 합니다.');
+        fileInput.value = '';
+        return;
+      }
+
+      selectedFile = file;
+      submitButton.disabled = false;
+      fileLabel.classList.add('has-file');
+      
+      // 업로드 콘텐츠 숨기고 미리보기 표시
+      uploadContent.classList.add('hidden');
+      
+      // 미리보기 생성
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImage.src = e.target.result;
+        previewImage.classList.add('show');
+        previewInfo.textContent = `${file.name} (${formatFileSize(file.size)})`;
+        previewInfo.classList.add('show');
+      };
+      reader.readAsDataURL(file);
+      
+      // 상태 메시지 초기화
+      statusMessage.className = 'status-message';
+    });
+
+    // 업로드 처리
+    submitButton.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      try {
+        submitButton.disabled = true;
+        showStatus('loading', '<span class="loading-spinner"></span>업로드 중입니다...');
+
+        // 타임스탬프로 고유한 파일명 생성
+        const timestamp = Date.now();
+        const fileExtension = selectedFile.name.split('.').pop();
+        const fileName = `${timestamp}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        
+        // Firebase Storage에 업로드
+        const storageRef = ref(storage, `upload/${fileName}`);
+        
+        console.log('📤 업로드 시작:', fileName);
+        const snapshot = await uploadBytes(storageRef, selectedFile);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        
+        console.log('✅ 업로드 완료:', downloadURL);
+
+        // 성공 메시지
+        showStatus('success', '✅ 이미지가 성공적으로 업로드되었습니다!');
+
+        // 폼 초기화
+        setTimeout(() => {
+          fileInput.value = '';
+          selectedFile = null;
+          submitButton.disabled = true;
+          uploadContent.classList.remove('hidden');
+          previewImage.classList.remove('show');
+          previewInfo.classList.remove('show');
+          fileLabel.classList.remove('has-file');
+          statusMessage.className = 'status-message';
+        }, 2000);
+
+      } catch (error) {
+        console.error('❌ 업로드 실패:', error);
+        
+        let errorMessage = '업로드에 실패했습니다.';
+        if (error.code === 'storage/unauthorized') {
+          errorMessage = '❌ 권한이 없습니다. Firebase 설정을 확인해주세요.';
+        } else if (error.code === 'storage/canceled') {
+          errorMessage = '❌ 업로드가 취소되었습니다.';
+        } else if (error.code === 'storage/unknown') {
+          errorMessage = '❌ 알 수 없는 오류가 발생했습니다.';
+        } else {
+          errorMessage = `❌ ${error.message}`;
+        }
+        
+        showStatus('error', errorMessage);
+        submitButton.disabled = false;
+      }
+    });
+
+    // 드래그 앤 드롭 지원
+    fileLabel.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!selectedFile) {
+        fileLabel.style.borderColor = '#007AFF';
+      }
+    });
+
+    fileLabel.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      if (!selectedFile) {
+        fileLabel.style.borderColor = '#D0D0D0';
+      }
+    });
+
+    fileLabel.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        fileInput.files = files;
+        fileInput.dispatchEvent(new Event('change'));
+      }
+      fileLabel.style.borderColor = '#D0D0D0';
+    });
+
+    console.log('🚀 이미지 업로드 시스템이 준비되었습니다.');
+  </script>
+</body>
+</html>

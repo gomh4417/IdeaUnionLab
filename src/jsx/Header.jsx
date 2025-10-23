@@ -13,7 +13,7 @@ const HeaderContainer = styled.header`
   border-radius: ${theme.radius.max};
   width: auto;
   max-width: fit-content;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 `;
 
 const IconWrap = styled.span`
