@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { theme } from '../styles/theme';
 
 const TRACK_HEIGHT = 3;
-const CONTROLLER_SIZE = 20;
+const CONTROLLER_SIZE = 24;
 const SLIDER_STEPS = ['small', 'medium', 'large'];
 
 const getStepPosition = (step) => {
@@ -22,7 +22,7 @@ const getActiveColor = (type) => {
 
 const SliderWrap = styled.div`
   width: 100%;
-  max-width: 240px;
+  max-width: 276px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -32,7 +32,7 @@ const SliderWrap = styled.div`
 
 const Track = styled.div`
   width: 100%;
-  max-width: 204px;
+  max-width: 276px;
   height: ${TRACK_HEIGHT}px;
   border-radius: 3px;
   background: ${({ $activeStep, $type }) => {

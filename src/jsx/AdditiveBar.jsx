@@ -7,18 +7,19 @@ import AdditiveList from './AdditiveList';
 import Slider from './Slider';
 
 const BarContainer = styled.div`
-  width: 260px;
-  height: 516px;
+  width: 320px;
+  height: 584px;
   background: #fff;
   border-radius: ${theme.radius.large};
   box-shadow: ${theme.shadow};
-  padding: 10px 14px;
+  padding: 20px 16px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   position: relative;
   overflow: hidden;
-  margin-left: 1316px;
+  margin-left: 1172px;
+  
 `;
 
 const Title = styled.div`
@@ -27,15 +28,16 @@ const Title = styled.div`
   line-height: 160%;
   color: ${theme.colors.gray[900]};
   margin-bottom: 12px;
+  margin-left: 8px;
 `;
 
 const ControlWrap = styled.div`
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin-top: auto;
+  margin-left: 8px;
   margin-bottom: 16px;
-  margin-top: 24px;
+  margin-top: 28px;
 `;
 
 const SubTitle = styled.div`

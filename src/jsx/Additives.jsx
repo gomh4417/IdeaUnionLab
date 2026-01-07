@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import styled from 'styled-components';
 import { theme } from '../styles/theme';
 
@@ -31,14 +32,15 @@ const ItemWrap = styled.div`
     justify-content: center;
     flex-direction: column;
     width: 100%;
-    min-width: 236px;
-    max-height: 220px;
+    min-width: 480px;
     transform: translateX(-14px);
     border-left: 4px solid transparent;
     background: ${({ $active, $color }) => $active ? `${$color}10` : 'transparent'};
     transition: all 1s ease-in-out;
     cursor: pointer;
     margin-bottom: 8px;
+    padding: 0px 16px;
+    margin: 8px 0px;
     
     border-left: ${({ $active, $color }) => $active ? `4px solid ${$color}` : '4px solid transparent'};
 `;
@@ -59,7 +61,7 @@ const IconBox = styled.div`
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-left: ${({ $active }) => $active ? `16px` : `8px`};
+    
 `;
 
 const IconImg = styled.img`
@@ -88,14 +90,14 @@ const Desc = styled.div`
 `;
 
 const ExpandImgBox = styled.div`
-    width: 204px;
-    height: 112px;
+    width: 280px;
+    height: 130px;
     border-radius: ${theme.radius.large};
     background: ${({ $color }) => $color ? `${$color}22` : theme.colors.gray[100]};
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 12px 14px;
+    margin: 12px 0px 4px 0px;
     overflow: hidden;
 `;
 
@@ -106,12 +108,46 @@ const ExpandImg = styled.img`
 `;
 
 export default function Additives({ type, active, onClick, referenceImage, setReferenceImage, onOpenImageModal }) {
-    // 업로드 박스 클릭 시 Firebase Storage 이미지 모달 열기
-    const handleUploadBoxClick = (e) => {
+    const referenceFileInputRef = useRef(null);
+
+    const openReferenceFilePicker = (e) => {
         e.stopPropagation(); // 부모 onClick 방지
-        if (onOpenImageModal) {
-            onOpenImageModal();
+        referenceFileInputRef.current?.click();
+
+        // (전시용) Firebase Storage 이미지 모달 열기 기능은 유지하되 비활성화
+        // if (onOpenImageModal) {
+        //     onOpenImageModal();
+        // }
+    };
+
+    const handleReferenceFileChange = (e) => {
+        e.stopPropagation();
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!setReferenceImage) return;
+
+        // jpg/png만 허용
+        const isValidType = file.type === 'image/png' || file.type === 'image/jpeg';
+        if (!isValidType) {
+            alert('PNG 또는 JPG 파일만 업로드할 수 있습니다.');
+            e.target.value = '';
+            return;
         }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result;
+            if (typeof result === 'string') {
+                setReferenceImage(result); // dataURL
+            }
+        };
+        reader.onerror = () => {
+            alert('이미지 파일을 읽는 중 오류가 발생했습니다.');
+        };
+        reader.readAsDataURL(file);
+
+        // 같은 파일 재선택을 위해 초기화
+        e.target.value = '';
     };
 
     return (
@@ -131,11 +167,23 @@ export default function Additives({ type, active, onClick, referenceImage, setRe
                         {referenceImage ? (
                             <ExpandImg src={referenceImage} alt="업로드 이미지" />
                         ) : (
-                            <UploadBox $color={ACTIVE_COLORS[type]} onClick={handleUploadBoxClick}>
+                            <UploadBox $color={ACTIVE_COLORS[type]} onClick={openReferenceFilePicker}>
                                 <UploadIcon className="material-symbols-outlined">upload</UploadIcon>
                                 <UploadText>레퍼런스 이미지를 선택해주세요</UploadText>
                             </UploadBox>
                         )}
+
+                        {/* 클릭 시 PC 파일 탐색기 열기 */}
+                        <input
+                            ref={referenceFileInputRef}
+                            type="file"
+                            accept="image/png, image/jpeg"
+                            style={{ display: 'none' }}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onTouchStart={(e) => e.stopPropagation()}
+                            onChange={handleReferenceFileChange}
+                        />
                     </ExpandImgBox>
                 ) : (
                     <ExpandImgBox $color={ACTIVE_COLORS[type]}>

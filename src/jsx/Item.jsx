@@ -10,9 +10,9 @@ const ItemWrap = styled.div`
   align-items: center;
   width: 100%;
   transform: translateX(-14px) ${({ $slid }) => $slid ? 'translateX(-44px)' : ''};
-  height: 72px;
+  height: 88px;
   margin: 0px 14px;
-  padding: 8px 0px 8px 10px;
+  padding: 8px 0px 8px 16px;
   cursor: pointer;
   background: ${({ $type }) => $type === 'activated' ? theme.colors.secondary : '#fff'};
   border-left: 4px solid ${({ $type }) => $type === 'activated' ? theme.colors.primary : 'transparent'};
@@ -34,8 +34,8 @@ const DeleteBtn = styled.button`
   position: absolute;
   right: -44px;
   top: 0px;
-  width: 48px;
-  height: 72px;
+  width: 60px;
+  height: 88px;
   background: #FF3B30;
   border-radius: 4px;
   display: flex;
@@ -50,8 +50,8 @@ const DeleteBtn = styled.button`
 `;
 
 const ImgBox = styled.div`
-  width: 60px;
-  height: 60px;
+  width: 68px;
+  height: 68px;
   border-radius: ${theme.radius.medium};
   background: #eee;
   overflow: hidden;
@@ -63,9 +63,8 @@ const ImgBox = styled.div`
 `;
 
 const Img = styled.img`
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: 80px;
+  object-fit: contain;
 `;
 
 const InfoWrap = styled.div`
@@ -80,7 +79,8 @@ const Title = styled.div`
   color: ${theme.colors.gray[900]};
   line-height: 140%;
   letter-spacing: -0.02em;
-  max-width: 132px;
+  max-width: 168px;
+  
 `;
 
 const Tag = styled.div`

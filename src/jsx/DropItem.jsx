@@ -86,7 +86,7 @@ const ChipLabel = styled.span`
 
 const ImgContainer = styled.div`
   width: 1120px;
-  height: 720px;
+  height: calc(1120px * 9 / 16);
   border-radius: ${({ theme }) => theme.radius.medium};
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
   overflow: hidden;
@@ -95,6 +95,13 @@ const ImgContainer = styled.div`
   align-items: center;
   justify-content: center;
   position: relative;
+  padding: 0;
+`;
+
+const Image = styled.img`
+  width: 1120px;
+  object-fit: contain;
+
 `;
 
 const LoadingOverlay = styled(motion.div)`
@@ -153,11 +160,7 @@ const LoadingText = styled.div`
   }
 `;
 
-const Image = styled.img`
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-`;
+
 
 const Title = styled.div`
   font-size: 20px;

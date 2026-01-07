@@ -54,11 +54,11 @@ const MainLayout = styled.div`
   display: flex;
   flex-direction: row;
   gap: 24px;
-  margin-top: 20px;
+  margin-top: 40px;
 `;
 
 const LeftCon = styled.div`
-  width: 298px;
+  width: 480px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -66,8 +66,6 @@ const LeftCon = styled.div`
 
 const RightCon = styled.div`
   flex: 1;
-  max-width: 804px;
-  max-height: 576px;
   background: ${theme.colors.gray[100]};
   border-radius: ${theme.radius.medium};
   display: flex;
@@ -76,7 +74,8 @@ const RightCon = styled.div`
   position: relative;
   overflow: hidden;
   width: 100%;
-  height: 100%;
+  max-width: 1348px;
+  height: calc(1348px * 9 / 16);
   
   /* 터치 스크롤 방지 (애플펜슬 사용 시) */
   touch-action: none;
@@ -84,46 +83,46 @@ const RightCon = styled.div`
 
 const TitleInput = styled.input.attrs({ maxLength: 50 })`
   width: 100%;
-  height: 60px;
+  height: 68px;
   border-radius: ${theme.radius.small};
   border: none;
   outline: none;
-  padding: 12px;
-  font-size: 16px;
+  padding: 14px 18px;
+  font-size: 18px;
   font-weight: 400;
   font-family: 'Pretendard', sans-serif;
   color: ${({ $hasValue }) =>
     $hasValue ? theme.colors.gray[900] : theme.colors.gray[500]};
   background: #fff;
-  border-bottom: 1px solid ${theme.colors.primary};
+  border-bottom: 2px solid ${theme.colors.primary};
   box-shadow: ${inputShadow};
   &:focus {
     box-shadow: ${theme.shadow};
     transition: all 0.2s ease-in-out;
-    border-bottom: 2px solid ${theme.colors.primary};
+    border-bottom: 3px solid ${theme.colors.primary};
   }
 `;
 
 const ContentInput = styled.textarea`
   width: 100%;
-  height: 491px;
+  height: 666px;
   border-radius: ${theme.radius.small};
   border: none;
   outline: none;
-  padding: 12px;
-  font-size: 14px;
+  padding: 14px 16px;
+  font-size: 16px;
   font-weight: 300;
   font-family: 'Pretendard', sans-serif;
   color: ${({ $hasValue }) =>
     $hasValue ? theme.colors.gray[900] : theme.colors.gray[500]};
   background: #fff;
-  border-bottom: 1px solid ${theme.colors.primary};
+  border-bottom: 2px solid ${theme.colors.primary};
   resize: none;
   box-shadow: ${inputShadow};
   &:focus {
     box-shadow: ${theme.shadow};
     transition: all 0.2s ease-in-out;
-    border-bottom: 2px solid ${theme.colors.primary};
+    border-bottom: 3px solid ${theme.colors.primary};
   }
 `;
 
@@ -138,9 +137,10 @@ const ToolBarWrap = styled.div`
   background: #fff;
   box-shadow: ${inputShadow};
   width: fit-content;
-  margin: 0 auto;
-  margin-top: 20px;
-  transform: translateX(-47px);
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
 `;
 
 const ToolbarBtn = styled.button`
@@ -166,8 +166,8 @@ const IflPromptContainer = styled.div`
   bottom: 68px;
   left: 50%;
   transform: translateX(-50%);
-  width: 200px;
-  height: 44px;
+  width: 320px;
+  height: 60px;
   border-radius: ${theme.radius.max};
   border: 1px solid ${theme.colors.primary};
   background: #fff;
@@ -183,7 +183,7 @@ const IflPromptInput = styled.input`
   height: 100%;
   border: none;
   outline: none;
-  padding: 0 20px;
+  padding: 0 16px;
   font-size: 14px;
   font-family: 'Pretendard', sans-serif;
   background: transparent;
@@ -207,6 +207,8 @@ const IflGenerateBtn = styled.button`
   right: 8px;
   top: 50%;
   transform: translateY(-50%);
+  width: 60px;
+  justify-content: center;
   height: calc(100% - 16px);
   display: flex;
   align-items: center;
@@ -420,7 +422,7 @@ function CanvasPage() {
   const [konvaImage, status] = useImage(imageUrl || undefined, 'anonymous');
   
   // 이미지 크기 및 위치 계산 (비율 유지)
-  const [imageProps, setImageProps] = useState({ x: 0, y: 0, width: 804, height: 623 });
+  const [imageProps, setImageProps] = useState({ x: 0, y: 0, width: 1348, height: 832 });
   
   // 이미지 로딩 상태 모니터링 및 비율 계산
   useEffect(() => {
@@ -431,8 +433,8 @@ function CanvasPage() {
     }
     
     if (konvaImage) {
-      const canvasWidth = 804;
-      const canvasHeight = 623;
+      const canvasWidth = 1348;
+      const canvasHeight = `calc(1348px * 9 / 16)`;
       const imgWidth = konvaImage.width;
       const imgHeight = konvaImage.height;
       
@@ -549,14 +551,15 @@ function CanvasPage() {
 
   const handleToolbarClick = async (type) => {
     if (type === 'image') {
-      // 이미지 모달 열기 및 업로드 이미지 목록 가져오기
-      setShowImageModal(true);
+      // 전시용(모달) 대신: PC 파일 탐색기 열기 (png/jpg)
       setShowIflInput(false);
       setShowWidthSlider(false);
-      
-      // Firebase Storage에서 최근 이미지 가져오기
-      const images = await getRecentUploadedImages();
-      setUploadedImages(images);
+      fileInputRef.current?.click();
+
+      // (전시용) Firebase Storage 이미지 모달 열기 기능은 유지하되 비활성화
+      // setShowImageModal(true);
+      // const images = await getRecentUploadedImages();
+      // setUploadedImages(images);
     }
     else if (type === 'undo') {
       handleReplay();
@@ -694,8 +697,8 @@ function CanvasPage() {
           <RightCon>
             <div
               style={{
-                width: 804,
-                height: 623,
+                width: 1348,
+                height: 832,
                 background: '#fff',
                 borderRadius: theme.radius.small,
                 boxShadow: inputShadow,
@@ -705,8 +708,8 @@ function CanvasPage() {
               }}
             >
               <Stage
-                width={804}
-                height={623}
+                width={1348}
+                height={832}
                 key={stageKey}
                 ref={stageRef}
                 onMouseDown={handleDrawStart}
@@ -806,24 +809,24 @@ function CanvasPage() {
                       <img
                         src="/draw.svg"
                         alt="guide"
-                        width={275}
-                        height={186}
-                        style={{ marginBottom: 24, opacity: 0.5 }}
+                        width={400}
+                        height={240}
+                        style={{ marginBottom: 52, opacity: 0.5 }}
                       />
                       <div
                         style={{
-                          fontSize: 20,
-                          fontWeight: 500,
+                          fontSize: 24,
+                          fontWeight: 600,
                           color: theme.colors.gray[500],
-                          marginBottom: 4,
+                          marginBottom: 16,
                         }}
                       >
                         아이디어 작성하기
                       </div>
                       <div
                         style={{
-                          fontSize: 16,
-                          fontWeight: 300,
+                          fontSize: 20,
+                          fontWeight: 400,
                           color: theme.colors.gray[400],
                         }}
                       >
@@ -864,7 +867,7 @@ function CanvasPage() {
                     type="text"
                     value={iflPrompt}
                     onChange={(e) => setIflPrompt(e.target.value)}
-                    placeholder={iflLoading ? '생성 중...' : '스마트 책상, 마우스'}
+                    placeholder={iflLoading ? '생성 중...' : 'ex)스마트 책상, 마우스'}
                     disabled={iflLoading}
                     autoFocus
                     onBlur={(e) => {

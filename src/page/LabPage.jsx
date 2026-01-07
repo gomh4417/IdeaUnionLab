@@ -492,7 +492,7 @@ function LabPage() {
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 400, color: theme.colors.gray[400], lineHeight: 1.4 }}>
                   리스트에서 아이디어를 탭하거나 드래그하여 우측 영역에 드롭해주세요<br />
-                  다른 아이디어를 고르고 싶다면, 새로운 아이디어를 드롭해주세요.
+                  아이디어의 우측을 탭하면 삭제할 수 있어요!
                 </div>
               </div>
             </DropArea>

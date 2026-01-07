@@ -125,16 +125,18 @@ const StepContent = styled.h5`
 
 const OriginImgBox = styled.div`
   width: 650px;
+  height: calc(650px * 9 / 16);
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
   border-radius: ${({ theme }) => theme.radius.medium};
   overflow: hidden;
     margin-bottom: 8px;
+    display: flex;
+  align-items: center;
+  justify-content: center;
   
   img {
     width: 650px;
-    
     object-fit: contain;
-    display: block;
   }
 `;
 

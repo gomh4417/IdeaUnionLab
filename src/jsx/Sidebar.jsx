@@ -10,16 +10,16 @@ import { theme } from '../styles/theme';
 const AddItemWrap = styled.div`
   display: flex;
   align-items: center;
-  width: 260px;
-  height: 72px;
+  width: 320px;
+  height: 88px;
   padding: 8px 0px;
   cursor: pointer;
-  margin: 0px 14px;
+  margin: 0px 18px;
 `;
 
 const AddBox = styled.div`
-  width: 60px;
-  height: 60px;
+  width: 68px;
+  height: 68px;
   border-radius: ${({ theme }) => theme.radius.medium};
   border: 1px dashed ${({ theme }) => theme.colors.gray[500]};
   display: flex;
@@ -35,7 +35,7 @@ const AddText = styled.span`
   
 `;
 const SidebarContainer = styled.div`
-  width: 260px;
+  width: 320px;
   height: 940px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
@@ -70,12 +70,12 @@ const BtnWrap = styled.div`
   display: flex;
   flex-direction: row;
   justify-content: space-between;
-  margin: 0px 14px;
+  margin: 0px 16px;
 `;
 
 const Btn = styled.button`
-  width: 120px;
-  height: 42px;
+  width: 168px;
+  height: 52px;
   border-radius: ${props => props.theme.radius.medium};
   background: ${({ $type, theme }) => $type === 'active' ? theme.colors.secondary : 'transparent'};
   color: ${({ $type, theme }) => $type === 'active' ? '#222' : theme.colors.gray[400]};

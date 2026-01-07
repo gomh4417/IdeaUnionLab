@@ -7,7 +7,7 @@ const ADDITIVE_TYPES = [
 ];
 
 const ListWrap = {
-  maxHeight: 344,
+  maxHeight: 396,
   display: 'flex',
   flexDirection: 'column',
   gap: 0,

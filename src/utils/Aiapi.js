@@ -124,6 +124,49 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
   { keywords: ['studio lighting'], replacement: 'studio lighting' }
 ];
 
+// DropItem에서 사용하는 16:9로 수정
+const TARGET_IMAGE_WIDTH = 1118;
+const TARGET_IMAGE_HEIGHT = 629;
+
+async function ensureTargetAspectRatio(dataUrl, targetWidth = TARGET_IMAGE_WIDTH, targetHeight = TARGET_IMAGE_HEIGHT) {
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    return dataUrl;
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+        const scale = Math.min(targetWidth / img.width, targetHeight / img.height);
+        const drawWidth = img.width * scale;
+        const drawHeight = img.height * scale;
+        const offsetX = (targetWidth - drawWidth) / 2;
+        const offsetY = (targetHeight - drawHeight) / 2;
+        ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        console.error('이미지 비율 정규화 실패:', err);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => {
+      resolve(dataUrl);
+    };
+    img.src = dataUrl;
+  });
+}
+
 // =============================================================================
 // GPT-4o API 헬퍼 함수들
 // =============================================================================
@@ -1558,7 +1601,9 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 - Professional product photography quality
 - Clean white or minimal background
 - Realistic materials, textures, and lighting
-- Focus on visual changes only (no text or descriptions)`;
+- Focus on visual changes only (no text or descriptions)
+- Output aspect ratio close to 1118x718 (1.56:1 wide landscape)
+- Keep the entire product visible without stretching or cropping`;
 
         console.log('최종 프롬프트:', formattedPrompt);
 
@@ -2342,7 +2387,7 @@ export const generateImageWithStability = async (prompt) => {
     // FormData 생성 - Ultra 모델용 최고품질 제품 렌더링
     const formData = new FormData();
     formData.append('prompt', ultraPrompt);
-    formData.append('aspect_ratio', '1:1');
+    formData.append('aspect_ratio', '16:9');
     formData.append('output_format', 'png');
 
     const response = await fetch(STABILITY_API_URL, {
