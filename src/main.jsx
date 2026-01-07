@@ -8,19 +8,6 @@ import './index.css'
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 
-const Wrapper = styled.div`
-  width: 100vw;
-  max-width: 1194px;
-  height: 100vh;
-  max-height: 100vh;
-  overflow: hidden;
-  box-shadow: 0 0 0 100vw rgba(0, 0, 0, 0.5);
-  position: relative;
-  margin-bottom: 20px;
-  
-  touch-action: none;
-`
-
 import HomePage from './page/HomePage'
 import LabPage from './page/LabPage'
 import ResultPage from './page/ResultPage'
@@ -28,7 +15,7 @@ import CanvasPage from './page/CanvasPage'
 
 const AppWrapper = ({ children }) => {
   
-  // 개발 환경에서만 StrictMode 사용
+
   if (import.meta.env.DEV) {
     return <StrictMode>{children}</StrictMode>;
   }
@@ -39,7 +26,7 @@ createRoot(document.getElementById('root')).render(
   <AppWrapper>
     <DndProvider backend={HTML5Backend}>
       <ThemeProvider theme={theme}>
-        <Wrapper>
+        
           <Router basename={import.meta.env.BASE_URL}>
             <Routes>
               <Route path="/" element={<HomePage />} />
@@ -48,7 +35,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="/result" element={<ResultPage />} />
             </Routes>
           </Router>
-        </Wrapper>
+        
       </ThemeProvider>
     </DndProvider>
   </AppWrapper>

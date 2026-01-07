@@ -47,7 +47,8 @@ const DropArea = styled.div`
   justify-content: center;
   padding-bottom: 24px;
   transition: border 0.2s;
-  max-height: 670px;
+  max-height: 940px;
+  width: ${({ $dropped }) => ($dropped ? '1120px' : '1420px')};
   z-index: 20;
   &.hover {
     border: 2px dashed ${theme.colors.gray[500]};
@@ -56,9 +57,9 @@ const DropArea = styled.div`
 
 const Stage = styled.div`
   position: absolute;
-  width: 840px;
-  height: 724px;
-  margin-left: 268px;
+  width: ${({ $dropped }) => ($dropped ? '1120px' : '1420px')};
+  height: 940px;
+  margin-left: 368px;
 `;
 
 const DropOverlay = styled(DropArea)`
@@ -66,7 +67,7 @@ const DropOverlay = styled(DropArea)`
   inset: 0;                /* 상하좌우 꽉 채움 */
   opacity: ${({ $active }) => ($active ? 1 : 0)};
   pointer-events: ${({ $active }) => ($active ? 'auto' : 'none')};
-  /* 살짝 베일 효과로 "교체" UX를 보여주고 싶으면 배경을 아주 옅게 */
+  
   background: ${({ $active }) => ($active ? '#fbfbfbF2' : 'transparent')};
   cursor: ${({ $active }) => ($active ? 'copy' : 'default')};
 `;
@@ -458,7 +459,7 @@ function LabPage() {
         />
 
         {/* 무대(Container) 위에 DropItem을 깔고, 그 위에 DropOverlay를 올림 */}
-        <Stage>
+        <Stage $dropped={dropped}>
           {/* 드롭된 카드 또는 안내 화면 */}
           {dropped && selectedItem ? (
             <DropItem
@@ -479,18 +480,19 @@ function LabPage() {
             />
           ) : (
             // 최초 상태의 안내 화면 (absolute positioned)
-            <DropArea>
+            <DropArea $dropped={dropped}>
               <img
                 src={`/dragdrop.gif?${gifKey}`}
                 alt="drag guide"
-                style={{ width: 470, height: 220, marginBottom: 12, opacity: 0.8 }}
+                style={{ width: 705, height: 330, marginBottom: 52, opacity: 0.8 }}
               />
               <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 20, fontWeight: 500, color: theme.colors.gray[500], marginBottom: 8 }}>
+                <div style={{ fontSize: 24, fontWeight: 600, color: theme.colors.gray[500], marginBottom: 16 }}>
                   아이디어 선택하기
                 </div>
-                <div style={{ fontSize: 16, fontWeight: 400, color: theme.colors.gray[400] }}>
-                  리스트에서 아이디어를 탭하거나 <br />드래그하여 우측 영역에 드롭해 주세요
+                <div style={{ fontSize: 20, fontWeight: 400, color: theme.colors.gray[400], lineHeight: 1.4 }}>
+                  리스트에서 아이디어를 탭하거나 드래그하여 우측 영역에 드롭해주세요<br />
+                  다른 아이디어를 고르고 싶다면, 새로운 아이디어를 드롭해주세요.
                 </div>
               </div>
             </DropArea>
@@ -501,6 +503,7 @@ function LabPage() {
             ref={drop}
             className={isOver ? 'hover' : ''}
             $active={isDraggingItem}          // 드래그 중에만 히트테스트 ON
+            $dropped={dropped}
           >
             {/* 드래그 중에 보일 UI */}
             {isItemOver ? (

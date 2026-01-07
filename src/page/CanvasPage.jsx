@@ -37,7 +37,7 @@ if (typeof document !== 'undefined') {
 }
 
 const Container = styled.div`
-  width: 1200px;
+  width: 1920px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;

@@ -60,7 +60,7 @@ export default function AnimatedPipesFM({
 
   return (
     <svg
-      viewBox="0 0 1194 834"
+      viewBox="0 0 1920 1080"
       width="100%"
       height="100%"
       style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: -50 }}
@@ -75,7 +75,7 @@ export default function AnimatedPipesFM({
           <linearGradient
             key={k}
             id={`grad-${k}`}
-            x1="0" y1="0" x2="1194" y2="0"
+            x1="0" y1="0" x2="1920" y2="0"
             gradientUnits="userSpaceOnUse"
           >
             <stop offset="0%"  stopColor={c1} />

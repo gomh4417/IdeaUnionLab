@@ -7,8 +7,8 @@ import AdditiveList from './AdditiveList';
 import Slider from './Slider';
 
 const BarContainer = styled.div`
-  width: 236px;
-  height: 498px;
+  width: 260px;
+  height: 516px;
   background: #fff;
   border-radius: ${theme.radius.large};
   box-shadow: ${theme.shadow};
@@ -18,11 +18,11 @@ const BarContainer = styled.div`
   align-items: stretch;
   position: relative;
   overflow: hidden;
-  margin-left: 612px;
+  margin-left: 1316px;
 `;
 
 const Title = styled.div`
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 160%;
   color: ${theme.colors.gray[900]};
@@ -34,18 +34,19 @@ const ControlWrap = styled.div`
   flex-direction: column;
   gap: 2px;
   margin-top: auto;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
+  margin-top: 24px;
 `;
 
 const SubTitle = styled.div`
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 500;
   color: ${theme.colors.gray[800]};
   line-height: 140%;
 `;
 
 const Guide = styled.div`
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: -0.02em;
   line-height: 16px;
   color: ${theme.colors.gray[600]};
@@ -135,7 +136,7 @@ const CloseButton = styled.button`
 `;
 
 const EmptyMessage = styled.div`
-  font-size: 14px;
+  font-size: 16px;
   color: ${theme.colors.gray[500]};
   font-family: 'Pretendard', sans-serif;
   text-align: center;

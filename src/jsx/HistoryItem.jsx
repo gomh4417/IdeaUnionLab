@@ -12,23 +12,23 @@ const StyledHistoryItem = styled.div`
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 2px 10px 2px 2px;
   cursor: pointer;
   border-radius: ${theme.radius.small};
   transition: background-color 0.2s ease;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: ${theme.colors.gray[600]};
-  line-height: 160%;
+  line-height: 150%;
 
   &:hover {
-    background-color: ${theme.colors.gray[200]};
+    background-color: ${theme.colors.gray[300]};
   }
 `;
 
 const AdditiveIcon = styled.img`
-  width: 20px;
-  height: 20px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
 `;
 

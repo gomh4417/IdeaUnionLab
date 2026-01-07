@@ -10,33 +10,33 @@ import { theme } from '../styles/theme';
 const AddItemWrap = styled.div`
   display: flex;
   align-items: center;
-  width: 235px;
-  height: 64px;
+  width: 260px;
+  height: 72px;
   padding: 8px 0px;
   cursor: pointer;
   margin: 0px 14px;
 `;
 
 const AddBox = styled.div`
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   border-radius: ${({ theme }) => theme.radius.medium};
   border: 1px dashed ${({ theme }) => theme.colors.gray[500]};
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-right: 14px;
+  margin-right: 16px;
 `;
 
 const AddText = styled.span`
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 400;
   color: ${({ theme }) => theme.colors.gray[600]};
   
 `;
 const SidebarContainer = styled.div`
-  width: 236px;
-  height: 670px;
+  width: 260px;
+  height: 940px;
   border-radius: ${props => props.theme.radius.large};
   overflow: hidden;
   padding: 10px 0px;
@@ -74,13 +74,13 @@ const BtnWrap = styled.div`
 `;
 
 const Btn = styled.button`
-  width: 104px;
+  width: 120px;
   height: 42px;
   border-radius: ${props => props.theme.radius.medium};
   background: ${({ $type, theme }) => $type === 'active' ? theme.colors.secondary : 'transparent'};
   color: ${({ $type, theme }) => $type === 'active' ? '#222' : theme.colors.gray[400]};
-  font-size: 14px;
-  font-weight: ${({ $type }) => $type === 'active' ? 600 : 500};
+  font-size: 16px;
+  font-weight: ${({ $type }) => $type === 'active' ? 600 : 400};
   border: none;
   outline: none;
   cursor: pointer;

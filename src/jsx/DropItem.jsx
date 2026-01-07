@@ -21,7 +21,7 @@ const BRAND_COLORS = {
 };
 
 const Container = styled.div`
-  width: 563px;
+  width: 1120px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -33,9 +33,9 @@ const ChipRow = styled.div`
   width: 100%;
   display: flex;
   align-items: start;
-  gap: 8px;
-  margin-bottom: 8px;
-  margin-top: 8px;
+  gap: 12px;
+  margin-bottom: 4px;
+  margin-top: 4px;
 `;
 
 const ChipRowSpaceBetween = styled.div`
@@ -59,18 +59,18 @@ const Chip = styled.div`
   gap: 2px;
   background: ${({ $brandcolor }) => $brandcolor ? `${$brandcolor}1A` : '#F6F6FB'};
   border-radius: ${({ theme }) => theme.radius.medium};
-  padding: 4px 10px 4px 6px;
-  height: 32px;
+  padding: 4px 14px 4px 6px;
+  height: 38px;
   margin-bottom: 8px;
 `;
 
 const ChipIcon = styled.img`
-  width: 24px;
-  height: 24px;
+  width: 38px;
+  height: 38px;
 `;
 
 const ChipText = styled.span`
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 500;
   color: ${({ $brandcolor, theme }) => $brandcolor || theme.colors.gray[900]};
   line-height: 160%;
@@ -85,9 +85,9 @@ const ChipLabel = styled.span`
 `;
 
 const ImgContainer = styled.div`
-  width: 563px;
-  height: 443px;
-  border-radius: ${({ theme }) => theme.radius.small};
+  width: 1120px;
+  height: 720px;
+  border-radius: ${({ theme }) => theme.radius.medium};
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
   overflow: hidden;
   margin-bottom: 12px;
@@ -112,10 +112,10 @@ const LoadingOverlay = styled(motion.div)`
 `;
 
 const LoadingSpinner = styled.div`
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(255, 255, 255, 0.2);
-  border-top: 3px solid #fff;
+  width: 60px;
+  height: 60px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top: 4px solid #fff;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   
@@ -130,9 +130,9 @@ const LoadingText = styled.div`
   text-align: center;
   
   .main-text {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 500;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
   }
   
   .sub-text-container {
@@ -163,7 +163,7 @@ const Title = styled.div`
   font-size: 20px;
   font-weight: 600;
   color: ${({ theme }) => theme.colors.gray[900]};
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   align-self: flex-start;
 `;
 
@@ -190,7 +190,7 @@ const Content = styled.div`
   line-height: 24px;
   text-align: justify;
   width: 100%;
-  max-height: 140px;
+  max-height: 160px;
   overflow-y: scroll;
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE and Edge */

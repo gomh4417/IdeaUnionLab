@@ -7,8 +7,8 @@ const StyledHistoryBtn = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 38px;
+  height: 38px;
   background: ${theme.colors.gray[300]};
   color: ${theme.colors.gray[600]};
   border: none;
@@ -31,7 +31,7 @@ const StyledHistoryBtn = styled.button`
 export default function HistoryBtn({ onClick, ...props }) {
   return (
     <StyledHistoryBtn onClick={onClick} {...props}>
-      <Icons type="source_notes" size={20} />
+      <Icons type="source_notes" size={24} />
     </StyledHistoryBtn>
   );
 }

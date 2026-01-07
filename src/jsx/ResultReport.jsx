@@ -2,14 +2,15 @@ import styled from 'styled-components';
 import { useRef, useState } from 'react';
 
 const ReportWrap = styled.div`
-  width: 528px;
+  width: 700px;
   height: 100%;
-  max-height: 834px;
+  max-height: 1080px;
   overflow-y: scroll;
   transform: translateY(-80px);
-  padding-top: 88px;
+  padding-top: 108px;
   position: absolute;
-  right: 40px;
+  right: 52px;
+  margin-top: -20px;
 
   &::-webkit-scrollbar {
     display: none;
@@ -19,14 +20,15 @@ const ReportWrap = styled.div`
 const LineWrap = styled.div`
   width: 20px;
   height: 100%;
-  min-height: 3360px;
+  min-height: 3300px;
   transform: translateY(-92px);
   position: absolute;
   margin-left: 6px;
+  margin-top: -16px;
 `;
 
 const Line = styled.div`
-  width: 3px;
+  width: 4px;
   left: 8px;
   position: absolute;
   height: 100%;
@@ -34,7 +36,7 @@ const Line = styled.div`
 `;
 
 const ScrollLine = styled.div`
-  width: 3px;
+  width: 4px;
   left: 0px;
   position: absolute;
   height: ${({ $height }) => $height}px;
@@ -76,11 +78,12 @@ const ChipWrap = styled.div`
 
 const Chip = styled.span`
   background: ${({ $active, $brandcolor }) => $active ? `${$brandcolor}1A` : '#f6f6fb'};
-  padding: 4px 10px;
+  padding: 4px 14px;
   display: flex;
   align-items: center;
   border-radius: 8px;
-  font-size: 12px;
+  font-weight: 500;
+  font-size: 16px;
   line-height: 160%;
   color: ${({ $active, $brandcolor }) => $active ? $brandcolor : '#a1a1a1'};
   transition: background 0.2s, color 0.2s;
@@ -108,7 +111,7 @@ const StepTitle = styled.h5`
   font-weight: 500;
   line-height: 24px;
   color: #333333;
-    margin-bottom: 4px;
+    margin-bottom: 8px;
 `;
 
 const StepContent = styled.h5`
@@ -121,16 +124,15 @@ const StepContent = styled.h5`
 `;
 
 const OriginImgBox = styled.div`
-  width: 480px;
-  
+  width: 650px;
   border: 1px solid ${({ theme }) => theme.colors.gray[300]};
-  border-radius: ${({ theme }) => theme.radius.small};
+  border-radius: ${({ theme }) => theme.radius.medium};
   overflow: hidden;
-    margin-bottom: 2px;
+    margin-bottom: 8px;
   
   img {
-    width: 100%;
-    height: 100%;
+    width: 650px;
+    
     object-fit: contain;
     display: block;
   }
@@ -142,7 +144,7 @@ export default function ResultReport({ brandColor, experimentResult, additiveTyp
     const [scrollY, setScrollY] = useState(0);
     const [activeStepIndex, setActiveStepIndex] = useState(0);
 
-    const CIRCLE_TRIGGER_OFFSET = 88 + 16; // 92은 패딩, 16은 Circle 마진 보정
+    const CIRCLE_TRIGGER_OFFSET = 88 + 80; // 92은 패딩, 20은 Circle 마진 보정
 
     const handleScroll = () => {
         const scrollTop = reportRef.current.scrollTop;
@@ -157,7 +159,7 @@ export default function ResultReport({ brandColor, experimentResult, additiveTyp
         setActiveStepIndex(newActiveIndex);
     };
 
-    const scrollLineHeight = 100 + scrollY;
+    const scrollLineHeight = 160 + scrollY;
 
     // 슬라이더 값에 따른 첨가제 강도 텍스트 (현재 사용하지 않음)
     // const getAdditiveIntensityText = (value) => {

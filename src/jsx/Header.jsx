@@ -9,24 +9,24 @@ import { useLocation } from 'react-router-dom';
 const HeaderContainer = styled.header`
   display: flex;
   align-items: center;
-  gap: 8px;
   border-radius: ${theme.radius.max};
   width: auto;
   max-width: fit-content;
-  margin-bottom: 16px;
+  margin-bottom: 28px;
 `;
 
 const IconWrap = styled.span`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: none;
   color: ${theme.colors.gray[800]};
   cursor: ${props => props.$clickable ? 'pointer' : 'default'};
   transition: opacity 0.2s;
+  margin-right: 8px;
   
   &:hover {
     opacity: ${props => props.$clickable ? 0.7 : 1};
@@ -34,7 +34,7 @@ const IconWrap = styled.span`
 `;
 
 const HeaderInput = styled.textarea`
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 500;
   color: ${theme.colors.gray[800]};
   line-height: 1.2;
@@ -46,8 +46,8 @@ const HeaderInput = styled.textarea`
   margin: 0;
   font-family: inherit;
   width: auto;
-  min-width: 48px;
-  max-width: 400px;
+  min-width: 148px;
+  max-width: 520px;
   cursor: text;
   resize: none;
   overflow: hidden;
@@ -78,7 +78,7 @@ const EditIconWrap = styled.span`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  margin-left: ${props => props.$isFocused ? "0px" : "-8px"};
+  margin-left: ${props => props.$isFocused ? "8px" : "-8px"};
   transition: margin-left 0.2s ease;
 
   &:hover {
@@ -170,7 +170,7 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
       hiddenSpanRef.current.textContent = editValue || 'Project Name';
       const textWidth = hiddenSpanRef.current.offsetWidth;
       const minWidth = 40;
-      const maxWidth = 400;
+      const maxWidth = 520;
       const finalWidth = Math.max(minWidth, Math.min(textWidth + 10, maxWidth));
       textareaRef.current.style.width = `${finalWidth}px`;
     }
@@ -264,7 +264,7 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
       />
       
       <IconWrap $clickable={!!onClick} onClick={onClick ? handleIconClick : undefined}>
-        <Icons type={type} size={24} color={theme.colors.gray[500]} />
+        <Icons type={type} size={32} color={theme.colors.gray[500]} />
       </IconWrap>
       
       <HeaderInput
@@ -283,7 +283,7 @@ export default function Header({ type = 'back', children, showEditIcon = false, 
         <EditIconWrap onClick={handleEditClick} $isFocused={isFocused}>
           <Icons 
             type={isFocused ? "check_circle" : "edit_square"}
-            size={20} 
+            size={24} 
             color={theme.colors.gray[400]}
             style={{
               transition: 'all 0.2s ease'

@@ -11,6 +11,8 @@ const FILES = [
   "/subpipe6.svg",
 ];
 
+const DEFAULT_REVERSE = [false, true, false, true, true, true];
+
 export default function SubPipes({
   baseWidth = 18,
   fluidWidth = 12,
@@ -20,7 +22,7 @@ export default function SubPipes({
   stagger = 0.18,
   easing = [0.2, 0.0, 0.1, 1.0],
   spring = false,
-  reverse = true,
+  reverse = DEFAULT_REVERSE,
   startDelay = 1,
   z = -55,
 }) {
@@ -50,7 +52,7 @@ export default function SubPipes({
 
   return (
     <svg
-      viewBox="0 0 1194 834"
+      viewBox="0 0 1920 1080"
       width="100%"
       height="100%"
       style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: z }}
@@ -72,25 +74,28 @@ export default function SubPipes({
       ))}
 
       {/* 애니메이션 라인 */}
-      {paths.map(({ d, i, transform }, idx) => (
-        <motion.path
-          key={`sub-fluid-${idx}`}
-          d={d}
-          transform={transform || undefined}
-          fill="none"
-          stroke="#eeeeee80"
-          strokeWidth={fluidWidth}
-          strokeLinecap="butt"
-          strokeLinejoin="bevel"
-          initial={{ pathLength: 0, pathOffset: reverse[i] ? 1 : 0 }}
-          animate={{ pathLength: 1, pathOffset: 0 }}
-          transition={
-            spring
-              ? { type: "spring", stiffness: 140, damping: 22, delay: startDelay + i * stagger }
-              : { duration, ease: easing, delay: startDelay + i * stagger }
-          }
-        />
-      ))}
+      {paths.map(({ d, i, transform }, idx) => {
+        const shouldReverse = Array.isArray(reverse) ? Boolean(reverse[i]) : Boolean(reverse);
+        return (
+          <motion.path
+            key={`sub-fluid-${idx}`}
+            d={d}
+            transform={transform || undefined}
+            fill="none"
+            stroke="#eeeeee80"
+            strokeWidth={fluidWidth}
+            strokeLinecap="butt"
+            strokeLinejoin="bevel"
+            initial={{ pathLength: 0, pathOffset: shouldReverse ? 1 : 0 }}
+            animate={{ pathLength: 1, pathOffset: 0 }}
+            transition={
+              spring
+                ? { type: "spring", stiffness: 140, damping: 22, delay: startDelay + i * stagger }
+                : { duration, ease: easing, delay: startDelay + i * stagger }
+            }
+          />
+        );
+      })}
     </svg>
   );
 }

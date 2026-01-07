@@ -14,8 +14,8 @@ import AnimatedSubPipes from '../jsx/AnimatedSubPipes';
 
 const HomePageContainer = styled.div`
     position: relative;
-    width: 1194px;
-    height: 834px;
+    width: 1920px;
+    height: 1080px;
     margin: 0 auto;
     
     z-index: 1;
@@ -29,7 +29,7 @@ const HomePageContainer = styled.div`
         right: 0;
         bottom: 0;
         background-image: url('/home_background.png');
-        background-size: 1194px 834px;
+        background-size: 1920px 1080px;
         background-position: center;
         background-repeat: no-repeat;
         z-index: -1;
@@ -40,8 +40,8 @@ const HomePageContainer = styled.div`
 const ContentWrapper = styled.div`
     position: relative;
     z-index: 2;
-    width: 100%;
-    height: 100%;
+    width: 1920px;
+    height: 1080px;
     display: flex;
     flex-direction: column;
     pointer-events: auto;
@@ -108,7 +108,7 @@ function HomePage() {
             onClick={handleStartNewExperiment}
             disabled={loading}
             >
-            {loading ? '생성 중...' : '새로운 실험하기'}
+            {loading ? '프로젝트 생성중' : '새로운 실험하기'}
             </StartButton>
         </motion.div>
 
@@ -132,7 +132,7 @@ function HomePage() {
             <AnimatedPipes
                 baseOpacity={0}
                 baseWidth={4}
-                fluidWidth={19}
+                fluidWidth={26}
                 duration={4}
                 stagger={0.3}
                 easing={[0.15, 0.0, 0.1, 0.6]}
@@ -144,7 +144,7 @@ function HomePage() {
                 baseColor="#E3E3E3" 
                 baseOpacity={0}
                 baseWidth={4}
-                fluidWidth={19}
+                fluidWidth={26}
                 duration={4}
                 stagger={0.3}
                 z={-55}               

@@ -665,7 +665,7 @@ function ResultPage() {
             type="delete"
             iconName="delete"
             onClick={handleDeleteResult}
-            style={{ position: 'absolute', right: 180, bottom: 36 }}
+            style={{ position: 'absolute', right: 220, bottom: 36 }}
           />
           
           {/* 저장 버튼 (오른쪽) */}
@@ -675,7 +675,7 @@ function ResultPage() {
             title={saving ? '저장 중...' : '저장하기'}
             onClick={handleSaveExperiment}
             disabled={saving}
-            style={{ position: 'absolute', right: 32, bottom: 36 }}
+            style={{ position: 'absolute', right: 40, bottom: 36 }}
           />
         </>
       )}

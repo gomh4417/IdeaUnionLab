@@ -10,18 +10,18 @@ const StyledBtn = styled.button`
   outline: none;
   cursor: pointer;
   font-family: 'Pretendard', sans-serif;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   border-radius: ${theme.radius.max};
   box-shadow: ${theme.shadow};
-  height: 52px;
-  min-width: 138px;
-  max-width: 138px;
-  gap: 4px;
+  height: 62px;
+  min-width: 165px;
+  max-width: 165px;
+  gap: 8px;
   background: ${theme.colors.primary};
   color: #fff;
   position: absolute;
-  right: 32px;
+  right: 40px;
   bottom: 36px;
 
   ${props => props.$type === 'disabled' && css`
@@ -45,8 +45,8 @@ const StyledBtn = styled.button`
 
   ${props => props.$type === 'delete' && css`
     min-width: 0;
-    width: 52px;
-    height: 52px;
+    width: 62px;
+    height: 62px;
     padding: 0;
     font-size: 0;
     background: #fff;
@@ -69,7 +69,7 @@ export default function ActionBtn({ type = 'default', iconName, title, ...props 
   return (
     <StyledBtn $type={type} disabled={type === 'disabled'} {...props}>
       {!isIconOnly && title}
-      {iconName && <Icons type={iconName} size={24} />}
+      {iconName && <Icons type={iconName} size={28} />}
     </StyledBtn>
   );
 }

@@ -14,7 +14,7 @@ export default function ItemList({ items = [], activatedIdx = null, onDeleteItem
   };
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:"8px", marginTop:"8px" }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:"4px", marginTop:"4px" }}>
       {items.map((item, idx) => (
         <Item
           key={item.id || idx}

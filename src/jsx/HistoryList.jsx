@@ -15,14 +15,14 @@ const HistoryButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 105px;
-  min-height: 32px;
+  width: 124px;
+  min-height: 38px;
   border: none;
   border-radius: ${theme.radius.medium};
-  padding: 4px 8px;
+  padding: 4px 14px;
   background-color: ${({ $activated }) => $activated ? theme.colors.secondary : theme.colors.gray[300]};
   color: ${({ $activated }) => $activated ? theme.colors.primary : theme.colors.gray[600]};
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 500;
   line-height: 160%;
   cursor: pointer;
@@ -285,7 +285,7 @@ export default function HistoryList({
       const additiveTypeFromData = experiment.current_additiveType || resultIdeaData.additiveType || 'creativity';
       const brandColor = ADDITIVE_COLORS[additiveTypeFromData] || '#5755FE';
       
-      console.log('🎨 브랜드 컬러 설정:', { additiveType: additiveTypeFromData, brandColor });
+      console.log('브랜드 컬러 설정:', { additiveType: additiveTypeFromData, brandColor });
       
       const experimentIdentifier = experiment.experimentId || experiment.id || '';
 
@@ -362,7 +362,7 @@ export default function HistoryList({
         }
       });
     } catch (error) {
-      console.error('❌ 히스토리 아이템 클릭 실패:', error);
+      console.error('히스토리 아이템 클릭 실패:', error);
       alert('선택한 실험 기록을 불러오는 중 오류가 발생했습니다.');
     }
     
@@ -386,7 +386,7 @@ export default function HistoryList({
             <div style={{ 
               padding: '12px', 
               textAlign: 'center', 
-              fontSize: '12px', 
+              fontSize: '14px', 
               color: theme.colors.gray[500] 
             }}>
               로딩 중...
@@ -395,7 +395,7 @@ export default function HistoryList({
             <div style={{ 
               padding: '12px', 
               textAlign: 'center', 
-              fontSize: '12px', 
+              fontSize: '14px', 
               color: theme.colors.gray[500] 
             }}>
               실험 기록이 없습니다

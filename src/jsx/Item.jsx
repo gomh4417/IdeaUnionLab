@@ -10,7 +10,7 @@ const ItemWrap = styled.div`
   align-items: center;
   width: 100%;
   transform: translateX(-14px) ${({ $slid }) => $slid ? 'translateX(-44px)' : ''};
-  height: 64px;
+  height: 72px;
   margin: 0px 14px;
   padding: 8px 0px 8px 10px;
   cursor: pointer;
@@ -24,7 +24,7 @@ const DeleteArea = styled.div`
   position: absolute;
   right: 0;
   top: 0;
-  width: 60px;
+  width: 72px;
   height: 100%;
   z-index: 2;
   cursor: pointer;
@@ -34,8 +34,8 @@ const DeleteBtn = styled.button`
   position: absolute;
   right: -44px;
   top: 0px;
-  width: 44px;
-  height: 64px;
+  width: 48px;
+  height: 72px;
   background: #FF3B30;
   border-radius: 4px;
   display: flex;
@@ -50,8 +50,8 @@ const DeleteBtn = styled.button`
 `;
 
 const ImgBox = styled.div`
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   border-radius: ${theme.radius.medium};
   background: #eee;
   overflow: hidden;
@@ -59,7 +59,7 @@ const ImgBox = styled.div`
   align-items: center;
   justify-content: center;
   margin-left: 0;
-  margin-right: 14px;
+  margin-right: 16px;
 `;
 
 const Img = styled.img`
@@ -75,17 +75,16 @@ const InfoWrap = styled.div`
 `;
 
 const Title = styled.div`
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 400;
   color: ${theme.colors.gray[900]};
-  margin-bottom: 2px;
   line-height: 140%;
   letter-spacing: -0.02em;
   max-width: 132px;
 `;
 
 const Tag = styled.div`
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
   color: ${theme.colors.gray[500]};
   line-height: 140%;
@@ -226,7 +225,7 @@ export default function Item({
       </InfoWrap>
       <DeleteArea onClick={handleDeleteAreaClick} />
       <DeleteBtn $show={slid} onClick={handleDelete}>
-        <Icons type="delete" size={24} color="#fff" />
+        <Icons type="delete" size={28} color="#fff" />
       </DeleteBtn>
     </ItemWrap>
   );

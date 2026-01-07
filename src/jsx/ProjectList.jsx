@@ -8,17 +8,17 @@ import { useLocation } from 'react-router-dom';
 // 캐러셀 컨테이너 스타일
 const CarouselContainer = styled.div`
   width: 100%;
-  height: 260px;
+  height: 280px;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 16px;
+  margin-top: 40px;
   position: relative;
 `;
 
 // 캐러셀 래퍼 (스크롤 영역)
 const CarouselWrapper = styled.div`
-  width: 1194px; /* HomePageContainer와 동일한 너비 */
+  width: 1920px; /* HomePageContainer와 동일한 너비 */
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -46,8 +46,9 @@ const CarouselTrack = styled.div`
   align-items: center;
   gap: 32px;
   /* 동적 패딩 계산: 첫 번째와 마지막 아이템이 중앙에 오도록 */
-  padding-left: 437px; /* 왼쪽 패딩 */
-  padding-right: 437px; /* 오른쪽 패딩 */
+  /* 포커스(확대)된 카드(320px)의 절반(160px)을 기준으로 중앙 정렬 */
+  padding-left: calc(50% - 160px);
+  padding-right: calc(50% - 160px);
   height: 100%;
   min-width: max-content; /* 콘텐츠 크기에 맞춰 너비 조정 */
 `;
@@ -83,6 +84,111 @@ export default function ProjectList() {
   const location = useLocation();
   const carouselRef = useRef(null);
   const itemRefs = useRef([]);
+  const hasAutoAligned = useRef(false);
+  const isDraggingRef = useRef(false);
+  const dragStartXRef = useRef(0);
+  const dragStartScrollLeftRef = useRef(0);
+
+  const getClosestIndex = useCallback(() => {
+    const container = carouselRef.current;
+    if (!container || itemRefs.current.length === 0) return 0;
+
+    const containerCenter = container.scrollLeft + container.offsetWidth / 2;
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+
+    itemRefs.current.forEach((item, index) => {
+      if (!item) return;
+      const itemCenter = item.offsetLeft + item.offsetWidth / 2;
+      const distance = Math.abs(containerCenter - itemCenter);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    return closestIndex;
+  }, []);
+
+  const scrollToIndexCenter = useCallback((index, behavior = 'smooth') => {
+    const container = carouselRef.current;
+    const targetItem = itemRefs.current[index];
+    if (!container || !targetItem) return;
+
+    const itemCenter = targetItem.offsetLeft + targetItem.offsetWidth / 2;
+    const containerCenter = container.offsetWidth / 2;
+    const scrollLeft = itemCenter - containerCenter;
+
+    container.scrollTo({ left: scrollLeft, behavior });
+  }, []);
+
+  const handleMouseDown = useCallback((e) => {
+    if (!carouselRef.current) return;
+    isDraggingRef.current = true;
+    dragStartXRef.current = e.clientX;
+    dragStartScrollLeftRef.current = carouselRef.current.scrollLeft;
+    setIsDelayedFocusChanging(true);
+    setScrollSnapDisabled(true);
+  }, []);
+
+  const handleMouseMove = useCallback((e) => {
+    const container = carouselRef.current;
+    if (!container || !isDraggingRef.current) return;
+    const dx = e.clientX - dragStartXRef.current;
+    container.scrollLeft = dragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const endDragAndSnap = useCallback(() => {
+    if (!carouselRef.current) return;
+    if (!isDraggingRef.current) return;
+
+    isDraggingRef.current = false;
+    setScrollSnapDisabled(false);
+
+    const closestIndex = getClosestIndex();
+    setFocusedIndex(closestIndex);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToIndexCenter(closestIndex, 'smooth');
+        setTimeout(() => {
+          setIsDelayedFocusChanging(false);
+        }, 250);
+      });
+    });
+  }, [getClosestIndex, scrollToIndexCenter]);
+
+  const handleMouseUp = useCallback(() => {
+    endDragAndSnap();
+  }, [endDragAndSnap]);
+
+  const handleMouseLeave = useCallback(() => {
+    endDragAndSnap();
+  }, [endDragAndSnap]);
+
+  const handleTouchStart = useCallback((e) => {
+    if (!carouselRef.current) return;
+    const t = e.touches?.[0];
+    if (!t) return;
+    isDraggingRef.current = true;
+    dragStartXRef.current = t.clientX;
+    dragStartScrollLeftRef.current = carouselRef.current.scrollLeft;
+    setIsDelayedFocusChanging(true);
+    setScrollSnapDisabled(true);
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    const container = carouselRef.current;
+    if (!container || !isDraggingRef.current) return;
+    const t = e.touches?.[0];
+    if (!t) return;
+    const dx = t.clientX - dragStartXRef.current;
+    container.scrollLeft = dragStartScrollLeftRef.current - dx;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    endDragAndSnap();
+  }, [endDragAndSnap]);
 
   // Firestore에서 프로젝트 실시간 로드
   const subscribeToProjects = useCallback(() => {
@@ -163,34 +269,11 @@ export default function ProjectList() {
 
   // 스크롤 이벤트로 현재 포커스된 아이템 감지
   const handleScroll = useCallback(() => {
-    // 지연된 포커스 변경 중에는 스크롤 이벤트 무시
+    // 프로그램 스냅/초기 정렬 중에는 포커스 추적을 잠깐 멈춤
     if (!carouselRef.current || projects.length === 0 || isDelayedFocusChanging) return;
-
-    const container = carouselRef.current;
-    const containerCenter = container.scrollLeft + container.offsetWidth / 2;
-    
-    let closestIndex = 0;
-    let closestDistance = Infinity;
-
-    itemRefs.current.forEach((item, index) => {
-      if (item) {
-        // 아이템의 실제 중앙 위치 계산 (패딩 포함)
-        const itemLeft = item.offsetLeft;
-        const itemWidth = item.offsetWidth;
-        const itemCenter = itemLeft + itemWidth / 2;
-        const distance = Math.abs(containerCenter - itemCenter);
-        
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestIndex = index;
-        }
-      }
-    });
-
-    if (closestIndex !== focusedIndex) {
-      setFocusedIndex(closestIndex);
-    }
-  }, [projects.length, focusedIndex, isDelayedFocusChanging]);
+    const closestIndex = getClosestIndex();
+    if (closestIndex !== focusedIndex) setFocusedIndex(closestIndex);
+  }, [projects.length, focusedIndex, isDelayedFocusChanging, getClosestIndex]);
 
   // 스크롤 이벤트 리스너 등록
   useEffect(() => {
@@ -201,88 +284,50 @@ export default function ProjectList() {
     }
   }, [handleScroll]);
 
-  // 초기 로드 시 첫 번째 아이템(최신 프로젝트)을 중앙에 배치
+  // 초기 로드 시 가장 최근 프로젝트(0번)를 StartButton 아래(가로 중앙)로 정렬
   useEffect(() => {
-    if (projects.length > 0 && carouselRef.current && itemRefs.current[0]) {
-      const container = carouselRef.current;
-      const firstItem = itemRefs.current[0];
-      
-      // 첫 번째 아이템의 중앙 위치 계산
-      const itemCenter = firstItem.offsetLeft + firstItem.offsetWidth / 2;
-      const containerCenter = container.offsetWidth / 2;
-      const scrollPosition = itemCenter - containerCenter;
-      
-      // 즉시 스크롤 (애니메이션 없이)
-      container.scrollTo({
-        left: scrollPosition,
-        behavior: 'auto'
-      });
-    }
-  }, [projects.length]); // projects 로드 완료 후 실행
+    if (projects.length === 0) return;
+    if (hasAutoAligned.current) return;
 
-  // 아이템 클릭 시 해당 아이템으로 스크롤 (지연된 포커스 변경)
-  const handleItemClick = useCallback((index) => {
-    const targetItem = itemRefs.current[index];
-    if (targetItem && carouselRef.current) {
-      const container = carouselRef.current;
-      
-      // 지연된 포커스 변경 시작
-      setIsDelayedFocusChanging(true);
-      
-      // scroll-snap 일시적으로 비활성화
-      setScrollSnapDisabled(true);
-      setQuickSnap(false);
-      
-      // 더 정확한 중앙 위치 계산
-      const containerRect = container.getBoundingClientRect();
-      const itemRect = targetItem.getBoundingClientRect();
-      
-      // 컨테이너의 중앙점
-      const containerCenter = containerRect.width / 2;
-      
-      // 아이템의 현재 위치에서 컨테이너 중앙까지의 거리
-      const itemCurrentCenter = itemRect.left - containerRect.left + itemRect.width / 2;
-      const distanceToCenter = itemCurrentCenter - containerCenter;
-      
-      // 현재 스크롤 위치에서 조정
-      const targetScrollPosition = container.scrollLeft + distanceToCenter;
-      
-      // 부드러운 스크롤 애니메이션
-      container.scrollTo({
-        left: targetScrollPosition,
-        behavior: 'smooth'
-      });
-      
-      // 0.5초 후에 포커스 변경 (크기 변화 지연)
-      setTimeout(() => {
-        setFocusedIndex(index);
-        setIsDelayedFocusChanging(false); // 지연된 포커스 변경 완료
-      }, 200);
-      
-      // 짧은 시간 후 scroll-snap 다시 활성화하여 빠른 최종 조정
-      setTimeout(() => {
+    // 첫 렌더에서 focused(확대) 적용 후 위치가 바뀔 수 있어서 2프레임 기다린 뒤 정렬
+    setIsDelayedFocusChanging(true);
+    setScrollSnapDisabled(true);
+    setQuickSnap(true);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToIndexCenter(0, 'auto');
+        setFocusedIndex(0);
         setScrollSnapDisabled(false);
-        setQuickSnap(true); // 빠른 snap 활성화
-        
-        // 최종 정확한 위치로 즉시 조정
+        setQuickSnap(false);
+        setIsDelayedFocusChanging(false);
+        hasAutoAligned.current = true;
+      });
+    });
+  }, [projects.length, scrollToIndexCenter]);
+
+  // 아이템 클릭 시 해당 아이템을 중앙으로 포커싱
+  const handleItemClick = useCallback((index) => {
+    setFocusedIndex(index);
+
+    // 포커스 변경(확대) -> 레이아웃 변경 반영 후 중앙 정렬
+    setIsDelayedFocusChanging(true);
+    setScrollSnapDisabled(true);
+    setQuickSnap(false);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        scrollToIndexCenter(index, 'smooth');
+
+        // 스크롤 중간에 handleScroll이 포커스를 다시 바꾸지 않도록 잠깐만 잠금
         setTimeout(() => {
-          const finalItemCenter = targetItem.offsetLeft + targetItem.offsetWidth / 2;
-          const finalContainerCenter = container.offsetWidth / 2;
-          const finalScrollPosition = finalItemCenter - finalContainerCenter;
-          
-          container.scrollTo({
-            left: finalScrollPosition,
-            behavior: 'auto' // 즉시 이동
-          });
-          
-          // 원래 상태로 복원
-          setTimeout(() => {
-            setQuickSnap(false);
-          }, 100);
-        }, 50);
-      }, 300); // 더 빠른 snap 활성화
-    }
-  }, []);
+          setScrollSnapDisabled(false);
+          setQuickSnap(false);
+          setIsDelayedFocusChanging(false);
+        }, 350);
+      });
+    });
+  }, [scrollToIndexCenter]);
 
   if (loading) {
     return (
@@ -314,6 +359,13 @@ export default function ProjectList() {
         ref={carouselRef} 
         $scrollSnapDisabled={scrollSnapDisabled}
         $quickSnap={quickSnap}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <CarouselTrack>
           {projects.map((project, index) => (

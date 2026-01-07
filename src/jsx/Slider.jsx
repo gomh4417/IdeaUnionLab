@@ -22,11 +22,12 @@ const getActiveColor = (type) => {
 
 const SliderWrap = styled.div`
   width: 100%;
-  max-width: 194px;
+  max-width: 240px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  
 `;
 
 const Track = styled.div`
@@ -59,6 +60,7 @@ const Controller = styled.div`
   cursor: pointer;
   transition: left 0.2s;
   z-index: 2;
+  
 `;
 
 const StepArea = styled.div`

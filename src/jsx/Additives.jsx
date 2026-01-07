@@ -28,10 +28,11 @@ const ACTIVE_COLORS = {
 const ItemWrap = styled.div`
     overflow: hidden;
     display: flex;
+    justify-content: center;
     flex-direction: column;
     width: 100%;
     min-width: 236px;
-    max-height: 200px;
+    max-height: 220px;
     transform: translateX(-14px);
     border-left: 4px solid transparent;
     background: ${({ $active, $color }) => $active ? `${$color}10` : 'transparent'};
@@ -51,14 +52,14 @@ const Row = styled.div`
 `;
 
 const IconBox = styled.div`
-    width: 48px;
-    height: 48px;
+    width: 60px;
+    height: 60px;
     border-radius: ${theme.radius.medium};
     background: ${({ $active, $color }) => $active ? `${$color}10` : theme.colors.gray[200]};
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-left: 10px;
+    margin-left: ${({ $active }) => $active ? `16px` : `8px`};
 `;
 
 const IconImg = styled.img`
@@ -73,14 +74,14 @@ const TextWrap = styled.div`
 `;
 
 const Name = styled.div`
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 500;
     color: ${theme.colors.gray[900]};
     line-height: 140%;
 `;
 
 const Desc = styled.div`
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 400;
     color: ${theme.colors.gray[500]};
     line-height: 140%;
