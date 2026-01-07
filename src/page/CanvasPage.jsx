@@ -22,6 +22,8 @@ import useImage from 'use-image';
 import Icons from '../jsx/Icons';
 
 const inputShadow = '0px 4px 8px rgba(0,0,0,0.05)';
+const CANVAS_WIDTH = 1320;
+const CANVAS_HEIGHT = 758;
 
 // 로딩 스피너 애니메이션
 const GlobalStyle = `
@@ -53,7 +55,7 @@ const OuterWrap = styled.div`
 const MainLayout = styled.div`
   display: flex;
   flex-direction: row;
-  gap: 24px;
+  gap: 52px;
   margin-top: 40px;
 `;
 
@@ -68,14 +70,15 @@ const RightCon = styled.div`
   flex: 1;
   background: ${theme.colors.gray[100]};
   border-radius: ${theme.radius.medium};
+  box-shadow: 0px 0px 8px #00000010;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
   width: 100%;
-  max-width: 1348px;
-  height: calc(1348px * 9 / 16);
+  max-width: 1320px;
+  height: calc((1320px * 9) / 16);
   
   /* 터치 스크롤 방지 (애플펜슬 사용 시) */
   touch-action: none;
@@ -105,7 +108,7 @@ const TitleInput = styled.input.attrs({ maxLength: 50 })`
 
 const ContentInput = styled.textarea`
   width: 100%;
-  height: 666px;
+  height: 650px;
   border-radius: ${theme.radius.small};
   border: none;
   outline: none;
@@ -163,7 +166,7 @@ const ToolbarBtn = styled.button`
 
 const IflPromptContainer = styled.div`
   position: absolute;
-  bottom: 68px;
+  bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
   width: 320px;
@@ -335,7 +338,6 @@ const ImageItem = styled.div`
   
   img {
     width: 100%;
-    height: 100%;
     object-fit: cover;
   }
 `;
@@ -422,7 +424,7 @@ function CanvasPage() {
   const [konvaImage, status] = useImage(imageUrl || undefined, 'anonymous');
   
   // 이미지 크기 및 위치 계산 (비율 유지)
-  const [imageProps, setImageProps] = useState({ x: 0, y: 0, width: 1348, height: 832 });
+  const [imageProps, setImageProps] = useState({ x: 0, y: 0, width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
   
   // 이미지 로딩 상태 모니터링 및 비율 계산
   useEffect(() => {
@@ -433,8 +435,8 @@ function CanvasPage() {
     }
     
     if (konvaImage) {
-      const canvasWidth = 1348;
-      const canvasHeight = `calc(1348px * 9 / 16)`;
+      const canvasWidth = CANVAS_WIDTH;
+      const canvasHeight = CANVAS_HEIGHT;
       const imgWidth = konvaImage.width;
       const imgHeight = konvaImage.height;
       
@@ -615,13 +617,13 @@ function CanvasPage() {
       setTitle(ideaData.title);
       setContent(ideaData.description);
 
-      // 2단계: Stability AI로 고품질 제품 렌더링 생성
+      // 2단계: Gemini 2.5로 고품질 제품 렌더링 생성
       try {
         console.log('🖼️ 제품 렌더링 생성 시작...');
         console.log('프롬프트:', ideaData.imagePrompt.substring(0, 100) + '...');
         
         const url = await generateImageWithStability(ideaData.imagePrompt);
-        console.log('🔍 Stability API 반환값 타입:', typeof url);
+        console.log('🔍 Gemini API 반환값 타입:', typeof url);
         console.log('🔍 URL 시작 부분:', url ? url.substring(0, 50) + '...' : 'null');
         
         const dataUrl = url.startsWith('http')
@@ -697,19 +699,21 @@ function CanvasPage() {
           <RightCon>
             <div
               style={{
-                width: 1348,
-                height: 832,
+                width: CANVAS_WIDTH,
+                height: CANVAS_HEIGHT,
                 background: '#fff',
                 borderRadius: theme.radius.small,
                 boxShadow: inputShadow,
                 position: 'relative',
                 overflow: 'hidden',
                 display: 'flex',
+                alignItems: 'start',
+                justifyContent: 'start',
               }}
             >
               <Stage
-                width={1348}
-                height={832}
+                width={CANVAS_WIDTH}
+                height={CANVAS_HEIGHT}
                 key={stageKey}
                 ref={stageRef}
                 onMouseDown={handleDrawStart}
@@ -718,7 +722,7 @@ function CanvasPage() {
                 onTouchStart={handleDrawStart}
                 onTouchMove={handleDrawMove}
                 onTouchEnd={handleDrawEnd}
-                style={{ width: 804, height: 623, touchAction: 'none' }}
+                style={{ width: '1320px', height: '758px', touchAction: 'none', display: 'flex', alignItems: 'start', justifyContent: 'start' }}
               >
                 {/* 이미지 레이어 (지우개 영향 X) */}
                 <Layer listening={false}>
@@ -860,34 +864,6 @@ function CanvasPage() {
             >
               <Icons type={type} size={28} color={activeTool === type ? '#222' : '#aaa'} />
 
-              {/* IFL 입력창 */}
-              {type === 'ifl' && showIflInput && (
-                <IflPromptContainer>
-                  <IflPromptInput
-                    type="text"
-                    value={iflPrompt}
-                    onChange={(e) => setIflPrompt(e.target.value)}
-                    placeholder={iflLoading ? '생성 중...' : 'ex)스마트 책상, 마우스'}
-                    disabled={iflLoading}
-                    autoFocus
-                    onBlur={(e) => {
-                      if (!e.relatedTarget || !e.relatedTarget.closest('.ifl-container')) {
-                        setTimeout(() => handleIflCancel(), 100);
-                      }
-                    }}
-                    onKeyDown={(e) => e.key === 'Escape' && handleIflCancel()}
-                  />
-                  <IflGenerateBtn
-                    type="button"
-                    onClick={handleIflSubmit}
-                    disabled={iflLoading || !iflPrompt.trim()}
-                    className="ifl-container"
-                  >
-                    {iflLoading ? '생성중' : '생성'}
-                  </IflGenerateBtn>
-                </IflPromptContainer>
-              )}
-              
               {/* 펜/지우개 굵기 조절 슬라이더 */}
               {(type === 'pen' || type === 'eraser') && showWidthSlider && activeTool === type && (
                 <WidthSliderContainer
@@ -905,6 +881,33 @@ function CanvasPage() {
               )}
             </ToolbarBtn>
           ))}
+
+          {/* IFL 입력창 - 툴바 버튼 밖으로 이동하여 중첩 버튼 제거 */}
+          {showIflInput && (
+            <IflPromptContainer className="ifl-container">
+              <IflPromptInput
+                type="text"
+                value={iflPrompt}
+                onChange={(e) => setIflPrompt(e.target.value)}
+                placeholder={iflLoading ? '생성 중...' : 'ex)스마트 책상, 마우스'}
+                disabled={iflLoading}
+                autoFocus
+                onBlur={(e) => {
+                  if (!e.relatedTarget || !e.relatedTarget.closest('.ifl-container')) {
+                    setTimeout(() => handleIflCancel(), 100);
+                  }
+                }}
+                onKeyDown={(e) => e.key === 'Escape' && handleIflCancel()}
+              />
+              <IflGenerateBtn
+                type="button"
+                onClick={handleIflSubmit}
+                disabled={iflLoading || !iflPrompt.trim()}
+              >
+                {iflLoading ? '생성중' : '생성'}
+              </IflGenerateBtn>
+            </IflPromptContainer>
+          )}
         </ToolBarWrap>
 
         <ActionBtn

@@ -124,9 +124,9 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
   { keywords: ['studio lighting'], replacement: 'studio lighting' }
 ];
 
-// DropItem에서 사용하는 16:9로 수정
+// DropItem에서 사용하는 1120x720 컨테이너에 맞춘 목표 비율(1118x718)
 const TARGET_IMAGE_WIDTH = 1118;
-const TARGET_IMAGE_HEIGHT = 629;
+const TARGET_IMAGE_HEIGHT = 718;
 
 async function ensureTargetAspectRatio(dataUrl, targetWidth = TARGET_IMAGE_WIDTH, targetHeight = TARGET_IMAGE_HEIGHT) {
   if (typeof document === 'undefined' || typeof Image === 'undefined') {
@@ -2429,6 +2429,9 @@ export const generateImageWithStability = async (prompt) => {
     throw error;
   }
 };
+
+
+
 
 
 
