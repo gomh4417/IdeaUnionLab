@@ -683,13 +683,13 @@ function CanvasPage() {
         <MainLayout>
           <LeftCon>
             <TitleInput
-              placeholder="Title Input"
+              placeholder="제목을 입력해주세요"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               $hasValue={!!title}
             />
             <ContentInput
-              placeholder="Content Input"
+              placeholder="기획 의도나 설명 등을 입력해주세요"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               $hasValue={!!content}
