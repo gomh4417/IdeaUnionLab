@@ -50,6 +50,9 @@ html, body {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
   font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', 'Nanum Gothic', 'Segoe UI', 'Dotum', Arial, sans-serif;
 }
 
@@ -60,4 +63,11 @@ html, body {
   transform: translate(-50%, -50%) scale(var(--scale));
   transform-origin: top left;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+#wrap_crop {
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
 }

@@ -26,7 +26,7 @@ createRoot(document.getElementById('root')).render(
   <AppWrapper>
     <DndProvider backend={HTML5Backend}>
       <ThemeProvider theme={theme}>
-        
+        <div id='wrap_crop'>
           <Router basename={import.meta.env.BASE_URL}>
             <Routes>
               <Route path="/" element={<HomePage />} />
@@ -35,7 +35,7 @@ createRoot(document.getElementById('root')).render(
               <Route path="/result" element={<ResultPage />} />
             </Routes>
           </Router>
-        
+        </div>
       </ThemeProvider>
     </DndProvider>
   </AppWrapper>
