@@ -593,7 +593,7 @@ function LabPage() {
                 }
                 
                 // Firebase 저장은 ResultPage에서 처리 (실험 완료 시)
-                console.log('� LabPage - 실험 ID 생성 완료, ResultPage로 전달 예정:', experimentId);
+                console.log('LabPage - 실험 ID 생성 완료, ResultPage로 전달 예정:', experimentId);
                 
                 // GPT API 호출로 실제 아이디어 생성
                 try {

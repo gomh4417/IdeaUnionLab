@@ -26,7 +26,8 @@ const LayoutWrap = styled.div`
 
 const ContentWrap = styled.div`
   display: flex;
-  gap: 40px;
+  gap: 16px;
+  margin-left: 8px;
 `;
 
 const SaveSuccessOverlay = styled.div`

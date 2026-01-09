@@ -8,8 +8,7 @@ const ReportWrap = styled.div`
   overflow-y: scroll;
   transform: translateY(-80px);
   padding-top: 108px;
-  position: absolute;
-  right: 52px;
+  
   margin-top: -20px;
 
   &::-webkit-scrollbar {

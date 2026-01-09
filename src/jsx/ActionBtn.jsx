@@ -21,7 +21,7 @@ const StyledBtn = styled.button`
   background: ${theme.colors.primary};
   color: #fff;
   position: absolute;
-  right: 40px;
+  right: 32px;
   bottom: 36px;
 
   ${props => props.$type === 'disabled' && css`
