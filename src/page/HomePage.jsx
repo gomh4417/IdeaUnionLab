@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -47,12 +47,35 @@ const ContentWrapper = styled.div`
     pointer-events: auto;
 `;
 
+const SearchInput = styled.input`
+    width : 240px;
+    height : 40px;
+    display: block;
+    margin: 12px auto 0;
+    border-radius : 8px;
+    border : 1px solid #ccc;
+    font-size : 16px;
+    transition: border-color 0.15s ease;
+    margin-top: 48px;
+    margin-bottom: -48px;
+    position: relative;
+    z-index: 20;
+    text-align: center;
+    
+    &:focus {
+        outline: none;
+        border: 2px solid #007BFF;
+    }
+`;
+
 function HomePage() {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [filled, setFilled] = useState(false);
-    const projectListRef = useRef(null);
+    const [searchQuery, setSearchQuery] = useState('');
     const LIST_DELAY_AFTER_FILLED = 1;
+
+    const MotionDiv = motion.div;
 
     const handleStartNewExperiment = async () => {
         try {
@@ -94,7 +117,7 @@ function HomePage() {
 
         <ContentWrapper>
         {/* StartButton */}
-        <motion.div
+        <MotionDiv
             initial={{ opacity: 0, y: 6 }}
             animate={filled ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
             transition={{
@@ -102,7 +125,7 @@ function HomePage() {
             duration: 0.5,
             ease: [0.2, 0.0, 0.1, 1.0],
             }}
-            style={{ willChange: 'opacity, transform' }}
+            style={{ willChange: 'opacity, transform', position: 'relative', zIndex: 10 }}
         >
             <StartButton
             onClick={handleStartNewExperiment}
@@ -110,10 +133,14 @@ function HomePage() {
             >
             {loading ? '프로젝트 생성중' : '새로운 실험하기'}
             </StartButton>
-        </motion.div>
+            <SearchInput
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+            />
+        </MotionDiv>
 
         {/* ProjectList */}
-        <motion.div
+        <MotionDiv
             initial={{ opacity: 0, y: 6 }}
             animate={filled ? { opacity: 1, y: 0 } : { opacity: 0, y: 6 }}
             transition={{
@@ -121,10 +148,10 @@ function HomePage() {
             duration: 0.5,
             ease: [0.2, 0.0, 0.1, 1.0],
             }}
-            style={{ willChange: 'opacity, transform' }}
+            style={{ willChange: 'opacity, transform', position: 'relative', zIndex: 1 }}
         >
-            <ProjectList />
-        </motion.div>
+            <ProjectList searchQuery={searchQuery} />
+        </MotionDiv>
         </ContentWrapper>
 
             <AnimatedLogos show={filled} delay={0} gap={0.1} />

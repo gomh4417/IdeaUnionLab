@@ -73,7 +73,7 @@ const StateWrapper = styled.div`
   text-align: center;
 `;
 
-export default function ProjectList() {
+export default function ProjectList({ searchQuery = '' }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -88,6 +88,42 @@ export default function ProjectList() {
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartScrollLeftRef = useRef(0);
+
+  const toMillis = useCallback((value) => {
+    if (!value) return 0;
+
+    // Firestore Timestamp (common shapes)
+    if (typeof value?.toDate === 'function') {
+      const d = value.toDate();
+      return d instanceof Date ? d.getTime() : 0;
+    }
+
+    if (typeof value?.seconds === 'number') {
+      const nanos = typeof value?.nanoseconds === 'number' ? value.nanoseconds : 0;
+      return value.seconds * 1000 + Math.floor(nanos / 1e6);
+    }
+
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+
+    // ISO string or other date-like strings
+    if (typeof value === 'string') {
+      const t = new Date(value).getTime();
+      return Number.isFinite(t) ? t : 0;
+    }
+
+    // Last resort
+    const t = new Date(value).getTime();
+    return Number.isFinite(t) ? t : 0;
+  }, []);
+
+  const normalizedQuery = (searchQuery ?? '').trim().toLowerCase();
+  const displayedProjects = normalizedQuery
+    ? projects.filter((p) => {
+        const title = (p?.title || p?.name || '').toString().toLowerCase();
+        return title.includes(normalizedQuery);
+      })
+    : projects;
 
   const getClosestIndex = useCallback(() => {
     const container = carouselRef.current;
@@ -109,6 +145,19 @@ export default function ProjectList() {
 
     return closestIndex;
   }, []);
+
+  // 검색어가 바뀌면 다시 0번을 기준으로 정렬/포커스
+  useEffect(() => {
+    hasAutoAligned.current = false;
+    setFocusedIndex(0);
+  }, [normalizedQuery]);
+
+  // 필터 결과가 줄어들어 focusedIndex가 범위를 벗어나면 보정
+  useEffect(() => {
+    if (focusedIndex >= displayedProjects.length) {
+      setFocusedIndex(0);
+    }
+  }, [focusedIndex, displayedProjects.length]);
 
   const scrollToIndexCenter = useCallback((index, behavior = 'smooth') => {
     const container = carouselRef.current;
@@ -212,19 +261,11 @@ export default function ProjectList() {
             };
           });
           
-          // 날짜순 정렬 (최신순)
+          // 생성일(createdAt) 기준 최신순 정렬 (Timestamp/ISO 문자열 모두 대응)
           const sortedData = data.sort((a, b) => {
-            const dateA = a.updatedAt || a.createdAt;
-            const dateB = b.updatedAt || b.createdAt;
-            
-            if (dateA?.seconds && dateB?.seconds) {
-              return dateB.seconds - dateA.seconds;
-            }
-            
-            const timeA = dateA instanceof Date ? dateA.getTime() : new Date(dateA || 0).getTime();
-            const timeB = dateB instanceof Date ? dateB.getTime() : new Date(dateB || 0).getTime();
-            
-            return timeB - timeA;
+            const aTime = toMillis(a.createdAt) || toMillis(a.updatedAt);
+            const bTime = toMillis(b.createdAt) || toMillis(b.updatedAt);
+            return bTime - aTime;
           });
           
           setProjects(sortedData);
@@ -270,10 +311,10 @@ export default function ProjectList() {
   // 스크롤 이벤트로 현재 포커스된 아이템 감지
   const handleScroll = useCallback(() => {
     // 프로그램 스냅/초기 정렬 중에는 포커스 추적을 잠깐 멈춤
-    if (!carouselRef.current || projects.length === 0 || isDelayedFocusChanging) return;
+    if (!carouselRef.current || displayedProjects.length === 0 || isDelayedFocusChanging) return;
     const closestIndex = getClosestIndex();
     if (closestIndex !== focusedIndex) setFocusedIndex(closestIndex);
-  }, [projects.length, focusedIndex, isDelayedFocusChanging, getClosestIndex]);
+  }, [displayedProjects.length, focusedIndex, isDelayedFocusChanging, getClosestIndex]);
 
   // 스크롤 이벤트 리스너 등록
   useEffect(() => {
@@ -286,7 +327,7 @@ export default function ProjectList() {
 
   // 초기 로드 시 가장 최근 프로젝트(0번)를 StartButton 아래(가로 중앙)로 정렬
   useEffect(() => {
-    if (projects.length === 0) return;
+    if (displayedProjects.length === 0) return;
     if (hasAutoAligned.current) return;
 
     // 첫 렌더에서 focused(확대) 적용 후 위치가 바뀔 수 있어서 2프레임 기다린 뒤 정렬
@@ -304,7 +345,7 @@ export default function ProjectList() {
         hasAutoAligned.current = true;
       });
     });
-  }, [projects.length, scrollToIndexCenter]);
+  }, [displayedProjects.length, scrollToIndexCenter]);
 
   // 아이템 클릭 시 해당 아이템을 중앙으로 포커싱
   const handleItemClick = useCallback((index) => {
@@ -353,6 +394,14 @@ export default function ProjectList() {
     );
   }
 
+  if (displayedProjects.length === 0) {
+    return (
+      <CarouselContainer>
+        <StateWrapper>검색 결과가 없습니다.</StateWrapper>
+      </CarouselContainer>
+    );
+  }
+
   return (
     <CarouselContainer>
       <CarouselWrapper 
@@ -368,7 +417,7 @@ export default function ProjectList() {
         onTouchEnd={handleTouchEnd}
       >
         <CarouselTrack>
-          {projects.map((project, index) => (
+          {displayedProjects.map((project, index) => (
             <ItemWrapper
               key={project.id}
               ref={(el) => (itemRefs.current[index] = el)}

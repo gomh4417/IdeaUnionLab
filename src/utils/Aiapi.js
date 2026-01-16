@@ -6,7 +6,9 @@ const API_URL = "https://api.openai.com/v1/chat/completions";
 const STABILITY_API_KEY = import.meta.env.VITE_STABILITY_API_KEY;
 const STABILITY_API_URL = "https://api.stability.ai/v2beta/stable-image/generate/ultra";
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_MODEL = "gemini-2.5-flash-image-preview";
+// NOTE: The previous model name caused 404 (model not found). Use an image-generation capable model.
+// Can be overridden via .env: VITE_GEMINI_IMAGE_MODEL
+const GEMINI_IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || "gemini-3-pro-image-preview";
 
 // Vision API 프롬프트 (이미지 분석용)
 const VISION_ANALYSIS_PROMPT = `당신은 제품 디자인 전문가입니다.
@@ -128,7 +130,7 @@ const ESSENTIAL_IMAGE_KEYWORDS = [
 const TARGET_IMAGE_WIDTH = 1118;
 const TARGET_IMAGE_HEIGHT = 718;
 
-async function ensureTargetAspectRatio(dataUrl, targetWidth = TARGET_IMAGE_WIDTH, targetHeight = TARGET_IMAGE_HEIGHT) {
+async function _ensureTargetAspectRatio(dataUrl, targetWidth = TARGET_IMAGE_WIDTH, targetHeight = TARGET_IMAGE_HEIGHT) {
   if (typeof document === 'undefined' || typeof Image === 'undefined') {
     return dataUrl;
   }
@@ -178,7 +180,7 @@ async function ensureTargetAspectRatio(dataUrl, targetWidth = TARGET_IMAGE_WIDTH
  * @param {string} koreanText - 번역할 한글 텍스트
  * @returns {Promise<string>} 번역된 영어 텍스트
  */
-async function translateToEnglish(koreanText) {
+async function _translateToEnglish(koreanText) {
   if (!koreanText || typeof koreanText !== 'string') {
     return koreanText || '';
   }
@@ -392,7 +394,7 @@ async function urlToBase64(url) {
  * @param {number} temperature - 온도 (0.0-2.0)
  * @returns {Promise<{text: string, imageUrl?: string}>} 생성된 텍스트와 이미지 (있는 경우)
  */
-async function callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
+async function _callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
   try {
     console.log('Gemini Vision API 호출 시작');
     console.log('이미지 URL 타입:', imageUrl.startsWith('data:') ? 'data URL' : 'HTTP URL');
@@ -440,7 +442,7 @@ async function callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
     };
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: {
@@ -466,9 +468,11 @@ async function callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
       if (part.text) {
         resultText = part.text;
       }
-      if (part.inlineData) {
-        const outMime = part.inlineData.mimeType || "image/png";
-        resultImageUrl = `data:${outMime};base64,${part.inlineData.data}`;
+
+      const inline = part.inlineData || part.inline_data;
+      if (inline?.data) {
+        const outMime = inline.mimeType || inline.mime_type || "image/png";
+        resultImageUrl = `data:${outMime};base64,${inline.data}`;
       }
     }
 
@@ -507,7 +511,7 @@ const getAdditiveTypeName = (additiveType) => {
  * @param {string} koreanPrompt - 번역할 한국어 프롬프트
  * @returns {Promise<string>} 번역된 영어 프롬프트
  */
-async function translateGeminiPrompt(koreanPrompt) {
+async function _translateGeminiPrompt(koreanPrompt) {
   if (!koreanPrompt || typeof koreanPrompt !== 'string') {
     return koreanPrompt || '';
   }
@@ -587,7 +591,7 @@ const getStrengthFromSlider = (sliderValue) => {
 };
 
 // strength 값을 설명 텍스트로 변환 (Gemini API 프롬프트용)
-const getStrengthDescription = (strength) => {
+const _getStrengthDescription = (strength) => {
   if (strength >= 0.75) {
     // 많이 변형 (0.85) - 슬라이더 2 (첨가제 많이)
     return "HIGH INTENSITY (85% transformation): Apply bold and creative changes with high freedom. Transform 70-90% of characteristics while maintaining only the core concept. For aesthetics: Heavily incorporate reference image's style, colors, materials. Prioritize creativity and innovation over preservation.";
@@ -1120,7 +1124,7 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
  * @param {string} referenceAnalysis - 레퍼런스 이미지 분석 (aesthetics용, 선택사항)
  * @returns {Promise<Object>} step별 분석 결과
  */
-async function analyzeWithGPT(ideaTitle, ideaDescription, additiveType, temperature = 0.7) {
+async function _analyzeWithGPT(ideaTitle, ideaDescription, additiveType, temperature = 0.7) {
   // 입력 변수 유효성 검증
   if (!ideaTitle || typeof ideaTitle !== 'string' || ideaTitle.trim() === '') {
     console.error('GPT 분석 실패: ideaTitle이 비어있음', ideaTitle);
@@ -1492,7 +1496,7 @@ STEP 4 DESIGN INSIGHT:
 ${step4Insight}
 
 YOUR TASK:
-Convert the Step 4 insight into a direct image modification prompt that Gemini 2.5 Flash can execute.
+Convert the Step 4 insight into a direct image modification prompt that the Gemini image model can execute.
 
 REQUIREMENTS:
 1. Extract the KEY VISUAL CHANGES from Step 4 insight
@@ -1548,10 +1552,10 @@ Apply specific visual changes to the product's form, materials, colors, or compo
     }
 }
 
-// Gemini 2.5 Flash Image 모델을 사용한 이미지 생성 함수 (공식 문서 기반)
+// Gemini 이미지 모델을 사용한 이미지 생성 함수 (공식 문서 기반)
 async function generateImageWithGemini(imagePrompt, originalImageUrl, strength = 0.6) {
     try {
-        console.log('Gemini 이미지 생성 시작 (gemini-2.5-flash-image-preview)');
+    console.log(`Gemini 이미지 생성 시작 (${GEMINI_IMAGE_MODEL})`);
         
         // 입력 이미지 검증
         if (!originalImageUrl || typeof originalImageUrl !== 'string' || originalImageUrl.trim() === '') {
@@ -1607,21 +1611,22 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 
         console.log('최종 프롬프트:', formattedPrompt);
 
-        // Gemini API 요청 구조 (공식 문서 기반)
+        // Gemini API 요청 구조 (v1beta REST)
+        // NOTE: Use snake_case keys (inline_data/mime_type).
         const body = {
-            contents: [{
-                parts: [
-                    {
-                        inlineData: {
-                            mimeType: mime,
-                            data: base64
-                        }
-                    },
-                    { 
-                        text: formattedPrompt
-                    }
-                ]
-            }],
+          contents: [{
+            parts: [
+              { 
+                text: formattedPrompt
+              },
+              {
+                inline_data: {
+                  mime_type: mime,
+                  data: base64
+                }
+              }
+            ]
+          }],
             generationConfig: {
                 temperature: 0.7,
                 maxOutputTokens: 8192,
@@ -1630,7 +1635,7 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
         };
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: "POST",
                 headers: {
@@ -1656,24 +1661,27 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
         let outUrl;
 
         for (const part of parts) {
-            if (part.text) {
-                resultText = part.text;
-            }
-            if (part.inlineData) {
-                resultImage = part.inlineData.data;
-                const outMime = part.inlineData.mimeType || "image/png";
-                outUrl = `data:${outMime};base64,${resultImage}`;
-            }
+          if (part.text) {
+            resultText = part.text;
+          }
+
+          const inline = part.inlineData || part.inline_data;
+          if (inline?.data) {
+            resultImage = inline.data;
+            const outMime = inline.mimeType || inline.mime_type || "image/png";
+            outUrl = `data:${outMime};base64,${resultImage}`;
+          }
         }
         
         console.log('파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
 
         if (!outUrl) {
-            // script.js와 동일한 에러 처리
-            if (resultText) {
-                console.log("이미지 응답이 오지 않았습니다. 모델 응답 텍스트:", resultText);
-            }
-            throw new Error("응답에서 이미지 데이터를 찾지 못했습니다.");
+          if (resultText) {
+            console.warn("이미지 응답이 오지 않았습니다. 텍스트 응답만 있음:", resultText.substring(0, 200) + '...');
+          } else {
+            console.warn("이미지와 텍스트 모두 없는 빈 응답");
+          }
+          return null;
         }
 
         console.log('이미지 생성 성공');
@@ -1740,16 +1748,16 @@ Generate ONLY the transformed product image.`;
             contents: [{
                 parts: [
                     {
-                        inlineData: {
-                            mimeType: srcImage.mime,
-                            data: srcImage.base64
-                        }
+                inline_data: {
+                  mime_type: srcImage.mime,
+                  data: srcImage.base64
+                }
                     },
                     {
-                        inlineData: {
-                            mimeType: refImage.mime,
-                            data: refImage.base64
-                        }
+                inline_data: {
+                  mime_type: refImage.mime,
+                  data: refImage.base64
+                }
                     },
                     { 
                         text: aestheticsPrompt  // 영어 그대로 사용
@@ -1764,7 +1772,7 @@ Generate ONLY the transformed product image.`;
         };
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: "POST",
                 headers: {
@@ -1790,14 +1798,16 @@ Generate ONLY the transformed product image.`;
         let outUrl;
 
         for (const part of parts) {
-            if (part.text) {
-                resultText = part.text;
-            }
-            if (part.inlineData) {
-                resultImage = part.inlineData.data;
-                const outMime = part.inlineData.mimeType || "image/png";
-                outUrl = `data:${outMime};base64,${resultImage}`;
-            }
+          if (part.text) {
+            resultText = part.text;
+          }
+
+          const inline = part.inlineData || part.inline_data;
+          if (inline?.data) {
+            resultImage = inline.data;
+            const outMime = inline.mimeType || inline.mime_type || "image/png";
+            outUrl = `data:${outMime};base64,${resultImage}`;
+          }
         }
 
         console.log('Gemini 파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
@@ -1828,7 +1838,7 @@ Generate ONLY the transformed product image.`;
  * @param {string} referenceImageUrl - 참조 이미지 URL
  * @returns {Promise<string>} 생성된 이미지의 base64 URL
  */
-async function generateImage(imagePrompt, refImageUrl, strength = 0.6) {
+async function _generateImage(imagePrompt, refImageUrl, strength = 0.6) {
     try {
         console.log('Gemini 이미지 생성 시작');
         console.log('이미지 프롬프트:', imagePrompt);
@@ -1857,10 +1867,10 @@ Generate ONLY the modified product image.`;
                         text: finalPrompt  // 영어 그대로 사용
                     },
                     {
-                        inlineData: {
-                            mimeType: mime,
-                            data: base64
-                        }
+                inline_data: {
+                  mime_type: mime,
+                  data: base64
+                }
                     }
                 ]
             }],
@@ -1872,7 +1882,7 @@ Generate ONLY the modified product image.`;
         };
 
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_IMAGE_MODEL}:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: "POST",
                 headers: {
@@ -1898,14 +1908,16 @@ Generate ONLY the modified product image.`;
         let outUrl;
 
         for (const part of parts) {
-            if (part.text) {
-                resultText = part.text;
-            }
-            if (part.inlineData) {
-                resultImage = part.inlineData.data;
-                const outMime = part.inlineData.mimeType || "image/png";
-                outUrl = `data:${outMime};base64,${resultImage}`;
-            }
+          if (part.text) {
+            resultText = part.text;
+          }
+
+          const inline = part.inlineData || part.inline_data;
+          if (inline?.data) {
+            resultImage = inline.data;
+            const outMime = inline.mimeType || inline.mime_type || "image/png";
+            outUrl = `data:${outMime};base64,${resultImage}`;
+          }
         }
 
         console.log('Gemini 파싱된 결과:', { resultText, resultImage: !!resultImage, outUrl: !!outUrl });
@@ -2021,7 +2033,7 @@ function extractStep3Analysis(steps, additiveType) {
 }
 
 // 분석 인사이트 텍스트 변환 (스키마 유연 지원)
-function stepsToText(steps) {
+function _stepsToText(steps) {
   if (Array.isArray(steps)) {
     return steps.map(step =>
       `Step ${step.stepNumber}: ${step.title}\n${step.description || ''}`
@@ -2107,10 +2119,10 @@ export async function improveProduct(
         console.log('상세한 이미지 프롬프트 생성 완료');
         console.log('프롬프트 내용:', imagePrompt);
 
-        // 개선된 제품 정보 생성 시 stepsToText 사용
-        // (아래 improveProductInfo 호출부 등에서 stepsToText(stepsData) 사용 가능)
+        // 개선된 제품 정보 생성 시 _stepsToText 사용
+        // (아래 improveProductInfo 호출부 등에서 _stepsToText(stepsData) 사용 가능)
         // 예시:
-        // const stepsText = stepsToText(stepsData);
+        // const stepsText = _stepsToText(stepsData);
         // const improvePrompt = `... [분석 인사이트]\n${stepsText}\n\n[스키마]\n{ ... } ...`;
 
         // 4단계: Gemini로 이미지 생성 (심미성 첨가제는 2개 입력, 나머지는 1개 입력)
@@ -2343,7 +2355,7 @@ export const generateRandomIdea = async (userPrompt) => {
     let ideaData;
     try {
       ideaData = JSON.parse(responseText);
-    } catch (parseError) {
+    } catch {
       console.error('JSON 파싱 실패, 응답:', responseText);
       // JSON 블록 추출 시도
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);

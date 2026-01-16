@@ -16,7 +16,7 @@ const StyledButton = styled.button`
     align-items: center;
     justify-content: center;
     margin: 0 auto;
-    margin-top: 640px;
+    margin-top: 624px;
 `;
 
 export default function StartButton({ children, ...props }) {

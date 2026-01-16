@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, writeBatch, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 
 // 프로젝트 아이템 컨테이너 스타일
@@ -11,6 +11,8 @@ const Container = styled(motion.div)`
     /* 기본 크기 설정 - 이미지 기준으로 수정 */
     width: 240px;  /* Default: 240px */
     height: 164px; /* Default: 164px */
+
+    position: relative;
     
     /* 컨테이너 모양 설정 */
     border-radius: ${({ $focused }) => $focused ? '10px' : '4px'};
@@ -37,6 +39,35 @@ const Container = styled(motion.div)`
         border-color: ${({ theme }) => theme.colors.gray[400]};
         
     }
+`;
+
+const CancelButton = styled.button`
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    z-index: 30;
+`;
+
+const CancelIcon = styled.div`
+    width: 24px;
+    height: 24px;
+    background-color: #cccccc;
+
+    -webkit-mask-image: url('/cancelBtn.svg');
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    -webkit-mask-size: contain;
+
+    mask-image: url('/cancelBtn.svg');
+    mask-repeat: no-repeat;
+    mask-position: center;
+    mask-size: contain;
 `;
 
 // 프로젝트 제목 스타일
@@ -171,11 +202,65 @@ const CounterNumber = styled.span`
 
 export default function ProjectItem({ project, focused, animating, onClick }) {
     const navigate = useNavigate();
+    const [deleting, setDeleting] = useState(false);
     const [additiveCounts, setAdditiveCounts] = useState({
         creativity: 0,
         usability: 0,
         aesthetics: 0
     });
+
+    const deleteCollectionInBatches = async (colRef) => {
+        const snap = await getDocs(colRef);
+        if (snap.empty) return;
+
+        let batch = writeBatch(db);
+        let opCount = 0;
+
+        for (const d of snap.docs) {
+            batch.delete(d.ref);
+            opCount += 1;
+
+            // Firestore batch limit: 500 ops
+            if (opCount >= 450) {
+                await batch.commit();
+                batch = writeBatch(db);
+                opCount = 0;
+            }
+        }
+
+        if (opCount > 0) {
+            await batch.commit();
+        }
+    };
+
+    const handleDeleteProject = async (e) => {
+        e.stopPropagation();
+        if (!project?.id) return;
+        if (deleting) return;
+
+        const ok = window.confirm('해당 프로젝트를 삭제하시겠습니까?');
+        if (!ok) return;
+
+        try {
+            setDeleting(true);
+
+            // projects/{projectId}/ideas/* and nested experiments
+            const ideasRef = collection(db, 'projects', project.id, 'ideas');
+            const ideasSnap = await getDocs(ideasRef);
+            for (const ideaDoc of ideasSnap.docs) {
+                const experimentsRef = collection(db, 'projects', project.id, 'ideas', ideaDoc.id, 'experiments');
+                await deleteCollectionInBatches(experimentsRef);
+                await deleteDoc(ideaDoc.ref);
+            }
+
+            // projects/{projectId}
+            await deleteDoc(doc(db, 'projects', project.id));
+        } catch (error) {
+            console.error('프로젝트 삭제 실패:', error);
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     // Firebase에서 해당 프로젝트의 생성물 아이디어들을 실시간으로 가져와서 additiveType별로 카운트
     useEffect(() => {
@@ -291,6 +376,11 @@ export default function ProjectItem({ project, focused, animating, onClick }) {
                 transition: animating ? 'none' : undefined,
             }}
         >
+            {focused && (
+                <CancelButton onClick={handleDeleteProject} disabled={deleting} aria-label="delete project">
+                    <CancelIcon />
+                </CancelButton>
+            )}
             {/* 프로젝트 제목 */}
             <Title $focused={focused}>
                 {project.title}
