@@ -10,6 +10,206 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 // Can be overridden via .env: VITE_GEMINI_IMAGE_MODEL
 const GEMINI_IMAGE_MODEL = import.meta.env.VITE_GEMINI_IMAGE_MODEL || "gemini-3-pro-image-preview";
 
+// OpenAI 최신 모델 설정 (문서 기준: gpt-5.2, gpt-5-mini)
+// - gpt-4o-mini -> gpt-5-mini
+// - gpt-4o -> gpt-5.2
+// 필요 시 .env로 오버라이드 가능
+const OPENAI_DEFAULT_MODEL = import.meta.env.VITE_OPENAI_DEFAULT_MODEL || "gpt-5.2";
+const OPENAI_MINI_MODEL = import.meta.env.VITE_OPENAI_MINI_MODEL || "gpt-5-mini";
+const OPENAI_FALLBACK_MODEL = import.meta.env.VITE_OPENAI_FALLBACK_MODEL || "gpt-5.2-chat-latest";
+
+// 토큰 상한 (GPT-5 응답이 길어져도 JSON이 잘리지 않도록 여유 확보)
+// Chat Completions에서는 GPT-5 계열에 대해 내부적으로 max_completion_tokens로 변환됩니다.
+const OPENAI_JSON_MAX_TOKENS = Number(import.meta.env.VITE_OPENAI_JSON_MAX_TOKENS || 8192);
+
+// (선택) 외부 조언과 동일한 네이밍을 제공하되, 실제 사용은 OPENAI_* 상수를 기준으로 함
+const MODEL_HIGH_PERFORMANCE = OPENAI_DEFAULT_MODEL;
+const MODEL_FAST_EFFICIENCY = OPENAI_MINI_MODEL;
+
+function _isGpt5FamilyModel(model) {
+  return typeof model === 'string' && model.startsWith('gpt-5');
+}
+
+function _injectTemperatureHint(messages, temperature) {
+  if (!Array.isArray(messages) || typeof temperature !== 'number') return messages;
+  const hint = `Creativity guidance: target creativity level is ${temperature} on a 0-2 scale. Lower = more literal/conservative; higher = more creative/divergent. Follow this guidance while keeping required formats (e.g., JSON) strict.`;
+
+  if (messages.length > 0 && messages[0]?.role === 'system' && typeof messages[0]?.content === 'string') {
+    return [{ ...messages[0], content: `${messages[0].content}\n\n${hint}` }, ...messages.slice(1)];
+  }
+  return [{ role: 'system', content: hint }, ...messages];
+}
+
+function _injectStrictJsonHint(messages) {
+  if (!Array.isArray(messages)) return messages;
+  const hint = 'Output must be VALID JSON only. Do not wrap in backticks. Do not include commentary. If unsure, output the closest valid JSON that matches the requested schema.';
+
+  if (messages.length > 0 && messages[0]?.role === 'system' && typeof messages[0]?.content === 'string') {
+    return [{ ...messages[0], content: `${messages[0].content}\n\n${hint}` }, ...messages.slice(1)];
+  }
+  return [{ role: 'system', content: hint }, ...messages];
+}
+
+function _extractJsonCandidate(text) {
+  if (typeof text !== 'string') return null;
+  let cleaned = text.trim();
+
+  cleaned = cleaned
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/i, '')
+    .trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return cleaned.slice(firstBrace, lastBrace + 1);
+  }
+
+  if (!cleaned.startsWith('{') && (cleaned.includes('"step1"') || cleaned.includes('"step2"') || cleaned.includes('"step3"'))) {
+    return `{${cleaned}}`;
+  }
+
+  return null;
+}
+
+function _safeJsonParse(text, { label } = {}) {
+  if (typeof text !== 'string') {
+    throw new Error(`${label || 'JSON'} 파싱 실패: 응답이 문자열이 아닙니다.`);
+  }
+
+  const trimmed = text.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch (firstErr) {
+    const candidate = _extractJsonCandidate(trimmed);
+    if (candidate) {
+      try {
+        return JSON.parse(candidate);
+      } catch (secondErr) {
+        console.error(`${label || 'JSON'} parse error (candidate):`, secondErr, candidate);
+      }
+    }
+
+    console.error(`${label || 'JSON'} parse error (raw):`, firstErr, trimmed);
+    throw new Error("JSON 파싱 실패: 프롬프트를 조정하거나 response_format을 확인하세요.");
+  }
+}
+
+function _normalizeOpenAIChatBody(body) {
+  if (!body || typeof body !== 'object') return body;
+  const normalized = { ...body };
+
+  if (_isGpt5FamilyModel(normalized.model)) {
+    // GPT-5 계열(Chat Completions)에서 max_tokens가 거부될 수 있어 max_completion_tokens로 변환
+    if (typeof normalized.max_tokens === 'number' && typeof normalized.max_completion_tokens !== 'number') {
+      normalized.max_completion_tokens = normalized.max_tokens;
+      delete normalized.max_tokens;
+    }
+
+    // GPT-5 계열에서 sampling 파라미터가 거부될 수 있어 제거하고, 동일 의도를 system 힌트로 보강
+    if (typeof normalized.temperature === 'number') {
+      normalized.messages = _injectTemperatureHint(normalized.messages, normalized.temperature);
+      delete normalized.temperature;
+    }
+
+    delete normalized.top_p;
+    delete normalized.logprobs;
+    delete normalized.frequency_penalty;
+    delete normalized.presence_penalty;
+  }
+
+  return normalized;
+}
+
+function _shouldTryNextModel(status, errorText) {
+  const t = String(errorText || '').toLowerCase();
+  return status === 404 || (status === 400 && (t.includes('model') || t.includes('not found') || t.includes('temperature') || t.includes('unsupported')));
+}
+
+async function _callOpenAIChatCompletions(body, { fallbackModel } = {}) {
+  if (!API_KEY) {
+    throw new Error('OpenAI API 키가 설정되지 않았습니다.');
+  }
+
+  const requestedModel = body?.model;
+  const candidateModels = [];
+  if (requestedModel) candidateModels.push(requestedModel);
+  if (fallbackModel && fallbackModel !== requestedModel) candidateModels.push(fallbackModel);
+
+  // mini 요청이 실패할 때는 기본 모델로 자동 폴백
+  if (requestedModel === OPENAI_MINI_MODEL) {
+    if (OPENAI_DEFAULT_MODEL && OPENAI_DEFAULT_MODEL !== requestedModel) candidateModels.push(OPENAI_DEFAULT_MODEL);
+    if (OPENAI_FALLBACK_MODEL && OPENAI_FALLBACK_MODEL !== requestedModel && OPENAI_FALLBACK_MODEL !== OPENAI_DEFAULT_MODEL) {
+      candidateModels.push(OPENAI_FALLBACK_MODEL);
+    }
+  } else {
+    if (OPENAI_FALLBACK_MODEL && OPENAI_FALLBACK_MODEL !== requestedModel) candidateModels.push(OPENAI_FALLBACK_MODEL);
+  }
+
+  const tried = new Set();
+  let lastErrorText = '';
+  let lastStatus = 0;
+
+  for (const model of candidateModels) {
+    if (!model || tried.has(model)) continue;
+    tried.add(model);
+
+    const requestBody = _normalizeOpenAIChatBody({ ...(body || {}), model });
+
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (response.ok) {
+      return await response.json();
+    }
+
+    lastStatus = response.status;
+    lastErrorText = await response.text();
+
+    // 일부 모델에서 response_format을 지원하지 않을 수 있어 1회 재시도
+    if (
+      response.status === 400 &&
+      requestBody?.response_format &&
+      String(lastErrorText).toLowerCase().includes('response_format')
+    ) {
+      const retryBody = { ...requestBody };
+      delete retryBody.response_format;
+      retryBody.messages = _injectStrictJsonHint(retryBody.messages);
+
+      const retryResponse = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`
+        },
+        body: JSON.stringify(retryBody)
+      });
+
+      if (retryResponse.ok) {
+        return await retryResponse.json();
+      }
+
+      lastStatus = retryResponse.status;
+      lastErrorText = await retryResponse.text();
+    }
+
+    if (_shouldTryNextModel(response.status, lastErrorText)) {
+      console.warn(`OpenAI 요청 실패로 모델 폴백 시도: ${model} -> 다음 후보 (status ${response.status})`);
+      continue;
+    }
+
+    throw new Error(`OpenAI API 요청 실패 (${response.status}): ${lastErrorText}`);
+  }
+
+  throw new Error(`OpenAI API 요청 실패 (${lastStatus}): ${lastErrorText}`);
+}
+
 // Vision API 프롬프트 (이미지 분석용)
 const VISION_ANALYSIS_PROMPT = `당신은 제품 디자인 전문가입니다.
 제공된 이미지를 분석하여 시각적 정보를 간결하게 설명하세요.
@@ -196,29 +396,16 @@ async function _translateToEnglish(koreanText) {
   
   try {
     const translatePrompt = `Translate the following Korean text to English naturally and accurately. Keep the meaning and tone intact. Only output the translated English text without any additional explanations or formatting.\n\nKorean text: "${koreanText}"`;
-    
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a professional translator. Translate Korean to English accurately and naturally." },
-          { role: "user", content: translatePrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 2000
-      })
+
+    const data = await _callOpenAIChatCompletions({
+      model: OPENAI_MINI_MODEL,
+      messages: [
+        { role: "system", content: "You are a professional translator. Translate Korean to English accurately and naturally." },
+        { role: "user", content: translatePrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 2000
     });
-    
-    if (!response.ok) {
-      throw new Error(`번역 API 오류: ${response.status}`);
-    }
-    
-    const data = await response.json();
     const translatedText = data.choices?.[0]?.message?.content?.trim() || koreanText;
     
     console.log('번역 완료:');
@@ -242,12 +429,8 @@ async function _translateToEnglish(koreanText) {
  * @returns {Promise<string>} 생성된 텍스트
  */
 async function callGPTTextAPI(prompt, forceJson = false, temperature = 0.7, maxTokens = 2048) {
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${API_KEY}`
-  };
   const body = {
-    model: "gpt-4o",
+    model: OPENAI_DEFAULT_MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature,
     max_tokens: maxTokens
@@ -257,25 +440,13 @@ async function callGPTTextAPI(prompt, forceJson = false, temperature = 0.7, maxT
   if (forceJson) {
     body.response_format = { type: "json_object" };
   }
-  
-  const response = await fetch(API_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body)
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`GPT API 요청 실패 (${response.status}): ${errorText}`);
-  }
-  
-  const data = await response.json();
+
+  const data = await _callOpenAIChatCompletions(body);
   return data.choices?.[0]?.message?.content || '';
 }
 
 /**
  * GPT-4o API로 이미지 분석
- * @param {string} imageUrl - 이미지 URL (base64 data URL)
  * @param {string} prompt - 분석 프롬프트
  * @returns {Promise<string>} 분석 결과
  */
@@ -284,43 +455,29 @@ async function callGPTVisionAPI(imageUrl, prompt) {
     console.log('GPT-4o Vision API 호출 시작');
     console.log('이미지 URL 타입:', imageUrl.startsWith('data:') ? 'data URL' : 'HTTP URL');
     console.log('Vision 프롬프트 (처음 200자):', prompt.substring(0, 200) + '...');
-    
+
     if (!API_KEY) {
       throw new Error('OpenAI API 키가 설정되지 않았습니다.');
     }
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o", 
-        messages: [
-          {
-            role: "system",
-            content: prompt
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
-              { type: "image_url", image_url: { url: imageUrl } }
-            ]
-          }
-        ],
-        max_tokens: 200,
-        temperature: 0.2,
-      }),
+    const data = await _callOpenAIChatCompletions({
+      model: OPENAI_DEFAULT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: prompt
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "이 이미지를 위의 기준에 따라 분석해 주세요." },
+            { type: "image_url", image_url: { url: imageUrl } }
+          ]
+        }
+      ],
+      max_tokens: 200,
+      temperature: 0.2,
     });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      throw new Error(`GPT-4o Vision API 오류: ${response.status} - ${errorData}`);
-    }
-
-    const data = await response.json();
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       throw new Error('GPT-4o Vision API에서 유효한 응답을 받지 못했습니다.');
@@ -425,13 +582,13 @@ async function _callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
       contents: [
         {
           parts: [
-            { text: prompt },
             {
               inline_data: {
                 mime_type: mimeType,
                 data: base64Data
               }
-            }
+            },
+            { text: prompt }
           ]
         }
       ],
@@ -527,29 +684,16 @@ async function _translateGeminiPrompt(koreanPrompt) {
   
   try {
     const translatePrompt = `한국어인 이미지 생성 프롬프트를 영어로 자연스럽게 번역해주세요. 최대한 잘못된 번역이 없도록 번역하세요. 번역된 영어 텍스트만 출력하고 추가 설명은 하지 마세요.\n\n한국어 프롬프트: "${koreanPrompt}"`;
-    
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "당신은 전문 번역가입니다. 이미지 생성 프롬프트를 한국어에서 영어로 정확하고 자연스럽게 번역하세요." },
-          { role: "user", content: translatePrompt }
-        ],
-        temperature: 0.3,
-        max_tokens: 1000
-      })
+
+    const data = await _callOpenAIChatCompletions({
+      model: OPENAI_MINI_MODEL,
+      messages: [
+        { role: "system", content: "당신은 전문 번역가입니다. 이미지 생성 프롬프트를 한국어에서 영어로 정확하고 자연스럽게 번역하세요." },
+        { role: "user", content: translatePrompt }
+      ],
+      temperature: 0.3,
+      max_tokens: 1000
     });
-    
-    if (!response.ok) {
-      throw new Error(`Gemini 프롬프트 번역 API 오류: ${response.status}`);
-    }
-    
-    const data = await response.json();
     const translatedPrompt = data.choices?.[0]?.message?.content?.trim() || koreanPrompt;
     
     console.log('한→영 Gemini 프롬프트 번역 완료:');
@@ -634,43 +778,8 @@ export async function analyzeReferenceImage(imageUrl) {
 export async function analyzeImageWithVision(imageUrl) {
   try {
     console.log('Vision API 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
-    
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: VISION_ANALYSIS_PROMPT
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageUrl
-                }
-              }
-            ]
-          }
-        ],
-        max_tokens: 1000,
-        temperature: 0.7
-      })
-    });
 
-    if (!response.ok) {
-      throw new Error(`Vision API 요청 실패: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const result = data.choices[0].message.content;
+    const result = await callGPTVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
     
     console.log('Vision API 분석 완료:', result.substring(0, 100) + '...');
     return result;
@@ -959,7 +1068,7 @@ const GPT_MINI_PROMPTS = {
 
     ##Step4: 인사이트 도출
     - title: Step3에서 OriginIdea를 사용하는 시나리오에서 발견한 문제점을 해결할 수 있는 인사이트를 1줄로 요약한 내용을 구어체로 작성합니다.
-    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요.
+    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요. Step3C, Step3D 등으로 언급하지 마세요. Step3A는 Step3 1단계, Step3B는 2단계로 표현해야 합니다.
     
     **중요: 모든 텍스트는 반드시 한국어로만 작성하세요. 일본어, 중국어 등 외국어를 절대 사용하지 마세요. 기술 용어도 한국어로 표현하세요.**
 
@@ -1043,29 +1152,21 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
     
     const prompt = GPT_MINI_PROMPTS[additiveType](ideaTitle, ideaDescription, referenceAnalysis, sliderValue)
     
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
-          { role: "user", content: prompt }
-        ],
-        max_tokens: 4096,  // 2048 → 4096으로 증가 (더 자세한 응답)
-        temperature: temperature  // 슬라이더 값에 따른 동적 temperature
-      })
+    const data = await _callOpenAIChatCompletions({
+      model: OPENAI_MINI_MODEL,
+      messages: [
+        { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
+        { role: "user", content: prompt }
+      ],
+      max_tokens: 4096,
+      response_format: { type: "json_object" },
+      temperature: temperature
     });
-    
-    const data = await response.json();
-    const text = data.choices[0].message.content;
+    const text = data.choices?.[0]?.message?.content ?? "";
     
     
     try {
-      const stepData = JSON.parse(text);
+      const stepData = _safeJsonParse(text, { label: 'analyzeIdea' });
       console.log('GPT 분석 완료:', stepData);
       
       // ResultReport에서 사용할 수 있도록 steps 배열로 변환
@@ -1199,8 +1300,8 @@ ${additiveTypeName} 개선에 초점을 맞춘 상세한 4단계 분석을 제�
 
 중요: 유효한 JSON만 응답하세요. 추가 텍스트나 설명은 하지 마세요.`;
 
-    const response = await callGPTTextAPI(prompt, true, temperature, 2048);
-    const result = JSON.parse(response);
+    const response = await callGPTTextAPI(prompt, true, temperature, Math.min(4096, OPENAI_JSON_MAX_TOKENS));
+    const result = _safeJsonParse(response, { label: '_analyzeWithGPT' });
     
     console.log('GPT-4o 분석 완료:', result);
     return result;
@@ -1290,40 +1391,28 @@ async function createImprovedIdea(originalDescription, step1Problems, step3Analy
     ##주의사항:
     - 과도한 마케팅 표현 금지, 간결하고 구체적으로 작성
     - Step1~4의 내용에 모순이 발생하지 않도록 생성해야 함
+    - OriginIdea, Step3C, Step3D 등으로 표현하지 마세요. OriginIdea는 사용자 아이디어, Step3A는 Step3 1단계, Step3B는 2단계로 표현해야 합니다.
     - JSON 형식 외에 다른 설명 없이, 백틱이나 점 출력 없이, JSON 스키마 오류 없이 출력
 
     JSON 스키마:
     {"title":"","description":""}
 `;
 
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: "You are a concise product naming and concept copy expert." },
-                    { role: "user", content: prompt }
-                ],
-                max_tokens: 3000,  // 1500 → 3000으로 증가 (더 자세한 설명)
-                response_format: { type: "json_object" },
-                temperature: 0.6
-            })
+        const data = await _callOpenAIChatCompletions({
+          model: OPENAI_MINI_MODEL,
+          messages: [
+          { role: "system", content: "You are a concise product naming and concept copy expert." },
+          { role: "user", content: prompt }
+          ],
+          max_tokens: OPENAI_JSON_MAX_TOKENS,
+          response_format: { type: "json_object" },
+          temperature: 0.6
         });
-
-        if (!response.ok) {
-            throw new Error(`GPT API 오류: ${response.status}`);
-        }
-
-        const data = await response.json();
         const text = data.choices?.[0]?.message?.content ?? "";
         
         console.log('GPT-4o-mini 개선 아이디어 응답:', text);
         
-        const result = JSON.parse(text);
+        const result = _safeJsonParse(text, { label: 'createImprovedIdea' });
         console.log('개선된 아이디어:', result);
         
         return result;
@@ -1382,9 +1471,8 @@ KEY RULES:
 2. SPECIFY exact visual changes: colors, materials, textures, patterns, shapes
 3. USE concrete descriptors: "flowing blue gradient" not "nice blue"
 4. MENTION specific elements: fabric, surface, structure, proportions
-5. KEEP total length under 100 words
-6. NO abstract concepts - only visual, tangible changes
-7. Focus on AESTHETIC attributes: color palette, material finish, pattern, texture, form language
+5. NO abstract concepts - only visual, tangible changes
+6. Focus on AESTHETIC attributes: color palette, material finish, pattern, texture, form language
 
 DO NOT:
 - Use vague terms like "modern", "innovative", "better"
@@ -1414,9 +1502,8 @@ KEY RULES:
 2. SPECIFY material transformations (acrylic, glass, metal, ceramic, etc.)
 3. Apply TRIZ-based structural innovations from Step 4
 4. Focus on 2-4 key creative transformations
-5. Total length: 50-80 words
-6. Make it natural and actionable
-7. Maintain PROFESSIONAL PRODUCT QUALITY - no crude or ugly elements
+5. Make it natural and actionable
+6. Maintain PROFESSIONAL PRODUCT QUALITY - no crude or ugly elements
 
 CRITICAL - MATERIAL DIVERSITY:
 - If Step 4 mentions segmentation → Consider transparent/translucent materials
@@ -1460,14 +1547,14 @@ KEY RULES:
 2. Specify FUNCTIONAL additions/modifications that solve usability issues
 3. Ensure added elements look PROFESSIONAL and WELL-DESIGNED
 4. Focus on 2-4 key usability improvements
-5. Total length: 50-80 words
-6. Make it natural and actionable
+5. Make it natural and actionable
 
 CRITICAL - BALANCE FUNCTION & AESTHETICS:
 - Make controls VISIBLE but not OVERSIZED or CRUDE
 - Integrate features SEAMLESSLY into the design
 - Use REFINED proportions and PROFESSIONAL finishes
 - Prioritize USER EXPERIENCE improvements from Step 4
+- Images of existing ideas should not be creatively transformed, and functional add-ons should be improved.
 
 DO NOT:
 - Mention Task Analysis methodology by name
@@ -1512,29 +1599,16 @@ EXAMPLE OUTPUT STYLE:
 Now create the modification prompt based on the product and Step 4 insight above. Output ONLY the prompt, nothing else.`;
 
     try {
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: "gpt-4o-mini",
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt }
-                ],
-                max_tokens: 1000,  // 500 → 1000으로 증가 (더 상세한 이미지 프롬프트)
-                temperature: 0.7
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`GPT API 오류: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const generatedPrompt = data.choices[0].message.content.trim();
+      const data = await _callOpenAIChatCompletions({
+        model: OPENAI_MINI_MODEL,
+        messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+        ],
+        max_tokens: 1000,
+        temperature: 0.7
+      });
+      const generatedPrompt = (data.choices?.[0]?.message?.content || '').trim();
         
         console.log('GPT가 생성한 구체적 시각적 변경 지시 (Step4 분석 포함):', generatedPrompt);
         return generatedPrompt;
@@ -1571,12 +1645,12 @@ async function generateImageWithGemini(imagePrompt, originalImageUrl, strength =
 
         // 강도 설명을 자연어로 구성
         const strengthGuidance = strength >= 0.75 
-            ? 'Apply BOLD and RADICAL transformations. Completely reimagine the design with dramatic structural changes. Be extremely creative and experimental - this is the maximum transformation level.' 
+            ? 'Very aggressive and bold transformation: You can deviate significantly from the original design. Present innovative and unconventional ideas. Completely reconstruct existing concepts, and take a bold approach to solving problems.' 
             : strength >= 0.5 
-            ? 'Apply noticeable improvements with moderate creative changes. Enhance key features with visible modifications while keeping the general concept.' 
-            : 'Preserve the original design closely. Apply only subtle, refined improvements that enhance quality without major changes.';
+            ? 'BALANCED IMPROVEMENT: Present a noticeable improvement while maintaining the core features of the original. Balance practicality with creativity.' 
+            : 'Conservative and progressive improvement: Provide only fine and stable improvements while maintaining the original design as much as possible. Adjust the fine details without significantly changing the existing structure.';
 
-        // Gemini 공식 프롬프트 형식: "Using the provided image of [subject], [action instructions]."
+        
         const formattedPrompt = `Using the provided image of this product, ${imagePrompt}
 
 Transformation Intensity:
@@ -1586,8 +1660,6 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 - Make DRAMATIC structural changes
 - COMPLETELY transform the design elements
 - Apply RADICAL innovations and unexpected modifications
-- Do NOT worry about preserving original style - INNOVATE BOLDLY
-- This is the HIGHEST transformation level - be EXTREMELY creative
 
 ` : strength >= 0.5 ? `MODERATE TRANSFORMATION MODE:
 - Apply noticeable design changes
@@ -1596,17 +1668,16 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 - Make clear improvements that are easy to spot
 
 ` : `MINIMAL TRANSFORMATION MODE:
-- Preserve the original design closely
-- Apply only subtle refinements
-- Maintain recognizability as top priority
-- Focus on quality enhancement over changes
+- It should be a conservative and gradual improvement.
+- Reflect only fine and stable improvements while maintaining the original design as much as possible.
+- Adjust only the details without significantly changing the existing structure.
 
 `}Technical Requirements:
 - Professional product photography quality
 - Clean white or minimal background
 - Realistic materials, textures, and lighting
 - Focus on visual changes only (no text or descriptions)
-- Output aspect ratio close to 1118x718 (1.56:1 wide landscape)
+- Output aspect ratio close to 1118x628 (1.78:1 wide landscape)
 - Keep the entire product visible without stretching or cropping`;
 
         console.log('최종 프롬프트:', formattedPrompt);
@@ -1616,14 +1687,14 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
         const body = {
           contents: [{
             parts: [
-              { 
-                text: formattedPrompt
-              },
               {
                 inline_data: {
                   mime_type: mime,
                   data: base64
                 }
+              },
+              { 
+                text: formattedPrompt
               }
             ]
           }],
@@ -2269,34 +2340,21 @@ export const generateProductTag = async (visionAnalysis, title, description) => 
 
 응답은 태그만 출력하세요 (설명 없이).`;
 
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant that generates product tags in Korean."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        max_tokens: 1500,
-        temperature: 0.3
-      })
+    const data = await _callOpenAIChatCompletions({
+      model: OPENAI_MINI_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: "You are a helpful assistant that generates product tags in Korean."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      max_tokens: 1500,
+      temperature: 0.3
     });
-
-    if (!response.ok) {
-      throw new Error(`태그 생성 API 요청 실패: ${response.status}`);
-    }
-
-    const data = await response.json();
     let tag = data.choices[0].message.content.trim();
     
     // 태그 형식 정리
@@ -2351,20 +2409,8 @@ export const generateRandomIdea = async (userPrompt) => {
     
     console.log('📝 GPT 응답:', responseText.substring(0, 200) + '...');
     
-    // JSON 파싱
-    let ideaData;
-    try {
-      ideaData = JSON.parse(responseText);
-    } catch {
-      console.error('JSON 파싱 실패, 응답:', responseText);
-      // JSON 블록 추출 시도
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        ideaData = JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error('유효한 JSON을 찾을 수 없습니다.');
-      }
-    }
+    // JSON 파싱 (fence/추출/잘림 대응)
+    const ideaData = _safeJsonParse(responseText, { label: 'generateRandomIdea' });
     
     console.log('✅ GPT-4o 랜덤 아이디어 생성 완료:', ideaData.title);
     console.log('📝 생성된 이미지 프롬프트:', ideaData.imagePrompt);
