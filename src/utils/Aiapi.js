@@ -2480,22 +2480,11 @@ export const generateImageWithStability = async (prompt) => {
       reader.readAsDataURL(blob);
     });
     
-    console.log('✅ Stability AI Ultra 이미지 생성 완료, Base64 길이:', base64Image.length);
+    console.log('Stability AI Ultra 이미지 생성 완료, Base64 길이:', base64Image.length);
     return base64Image;
     
   } catch (error) {
-    console.error('❌ Stability AI 이미지 생성 실패:', error);
+    console.error('Stability AI 이미지 생성 실패:', error);
     throw error;
   }
 };
-
-
-
-
-
-
-
-
-
-
-
