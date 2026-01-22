@@ -26,10 +26,6 @@ const OPENAI_JSON_MAX_TOKENS = Number(import.meta.env.VITE_OPENAI_JSON_MAX_TOKEN
 const MODEL_HIGH_PERFORMANCE = OPENAI_DEFAULT_MODEL;
 const MODEL_FAST_EFFICIENCY = OPENAI_MINI_MODEL;
 
-function _isGpt5MiniModel(model) {
-  return typeof model === 'string' && model.startsWith('gpt-5-mini');
-}
-
 function _isGpt5FamilyModel(model) {
   return typeof model === 'string' && model.startsWith('gpt-5');
 }
@@ -58,7 +54,6 @@ function _extractJsonCandidate(text) {
   if (typeof text !== 'string') return null;
   let cleaned = text.trim();
 
-  // Remove common markdown fences
   cleaned = cleaned
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```\s*$/i, '')
@@ -70,7 +65,6 @@ function _extractJsonCandidate(text) {
     return cleaned.slice(firstBrace, lastBrace + 1);
   }
 
-  // Occasionally the model returns an object body without outer braces.
   if (!cleaned.startsWith('{') && (cleaned.includes('"step1"') || cleaned.includes('"step2"') || cleaned.includes('"step3"'))) {
     return `{${cleaned}}`;
   }
@@ -446,14 +440,13 @@ async function callGPTTextAPI(prompt, forceJson = false, temperature = 0.7, maxT
   if (forceJson) {
     body.response_format = { type: "json_object" };
   }
-  
-  const data = await _callOpenAIChatCompletions(body, { fallbackModel: OPENAI_FALLBACK_MODEL });
+
+  const data = await _callOpenAIChatCompletions(body);
   return data.choices?.[0]?.message?.content || '';
 }
 
 /**
  * GPT-4o API로 이미지 분석
- * @param {string} imageUrl - 이미지 URL (base64 data URL)
  * @param {string} prompt - 분석 프롬프트
  * @returns {Promise<string>} 분석 결과
  */
@@ -462,7 +455,7 @@ async function callGPTVisionAPI(imageUrl, prompt) {
     console.log('GPT-4o Vision API 호출 시작');
     console.log('이미지 URL 타입:', imageUrl.startsWith('data:') ? 'data URL' : 'HTTP URL');
     console.log('Vision 프롬프트 (처음 200자):', prompt.substring(0, 200) + '...');
-    
+
     if (!API_KEY) {
       throw new Error('OpenAI API 키가 설정되지 않았습니다.');
     }
@@ -484,7 +477,7 @@ async function callGPTVisionAPI(imageUrl, prompt) {
       ],
       max_tokens: 200,
       temperature: 0.2,
-    }, { fallbackModel: OPENAI_FALLBACK_MODEL });
+    });
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       throw new Error('GPT-4o Vision API에서 유효한 응답을 받지 못했습니다.');
@@ -589,13 +582,13 @@ async function _callGeminiVisionAPI(prompt, imageUrl, temperature = 0.7) {
       contents: [
         {
           parts: [
-            { text: prompt },
             {
               inline_data: {
                 mime_type: mimeType,
                 data: base64Data
               }
-            }
+            },
+            { text: prompt }
           ]
         }
       ],
@@ -785,30 +778,8 @@ export async function analyzeReferenceImage(imageUrl) {
 export async function analyzeImageWithVision(imageUrl) {
   try {
     console.log('Vision API 이미지 분석 시작:', imageUrl.substring(0, 50) + '...');
-    
-    const data = await _callOpenAIChatCompletions({
-      model: OPENAI_DEFAULT_MODEL,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: VISION_ANALYSIS_PROMPT
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: imageUrl
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 1000,
-      temperature: 0.7
-    }, { fallbackModel: OPENAI_FALLBACK_MODEL });
-    const result = data.choices[0].message.content;
+
+    const result = await callGPTVisionAPI(imageUrl, VISION_ANALYSIS_PROMPT);
     
     console.log('Vision API 분석 완료:', result.substring(0, 100) + '...');
     return result;
@@ -1097,7 +1068,7 @@ const GPT_MINI_PROMPTS = {
 
     ##Step4: 인사이트 도출
     - title: Step3에서 OriginIdea를 사용하는 시나리오에서 발견한 문제점을 해결할 수 있는 인사이트를 1줄로 요약한 내용을 구어체로 작성합니다.
-    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요.
+    - description: Step4.title에서 1줄로 요약한 내용을 사용자의 입장에서 상세히 묘사하며 설명합니다. OriginIdea의 문제점이 어떻게 바뀔 수 있는지 가능성을 제시하세요. **위에서 설정한 개선 강도에 맞춰 제안의 수준을 조절하세요.** 최소 700자 이상 작성하세요. Step3C, Step3D 등으로 언급하지 마세요. Step3A는 Step3 1단계, Step3B는 2단계로 표현해야 합니다.
     
     **중요: 모든 텍스트는 반드시 한국어로만 작성하세요. 일본어, 중국어 등 외국어를 절대 사용하지 마세요. 기술 용어도 한국어로 표현하세요.**
 
@@ -1187,21 +1158,26 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
         { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
         { role: "user", content: prompt }
       ],
-      max_tokens: OPENAI_JSON_MAX_TOKENS,
+      max_tokens: 4096,
       response_format: { type: "json_object" },
-      temperature: temperature  // (mini 모델에서는 내부적으로 힌트 메시지로 변환)
+      temperature: temperature
     });
-    const text = data.choices[0].message.content;
+    const text = data.choices?.[0]?.message?.content ?? "";
     
-
-    const buildStepsFromStepData = (stepData) => {
+    
+    try {
+      const stepData = _safeJsonParse(text, { label: 'analyzeIdea' });
+      console.log('GPT 분석 완료:', stepData);
+      
+      // ResultReport에서 사용할 수 있도록 steps 배열로 변환
       const steps = [];
       if (additiveType === 'usability') {
+        // 사용성: script.js의 step3title + step3a~e 구조
         steps.push({ stepNumber: 1, title: stepData.step1.title, description: stepData.step1.description });
         steps.push({ stepNumber: 2, title: stepData.step2.title, description: stepData.step2.description });
-        steps.push({
-          stepNumber: 3,
-          title: stepData.step3.step3title.title,
+        steps.push({ 
+          stepNumber: 3, 
+          title: stepData.step3.step3title.title, 
           descriptions: [
             stepData.step3.step3a.description,
             stepData.step3.step3b.description,
@@ -1212,52 +1188,25 @@ export async function analyzeIdea(additiveType, ideaTitle, ideaDescription, visi
         });
         steps.push({ stepNumber: 4, title: stepData.step4.title, description: stepData.step4.description });
       } else {
+        // 창의성, 심미성: script.js의 step3a~c 구조
         steps.push({ stepNumber: 1, title: stepData.step1.title, description: stepData.step1.description });
         steps.push({ stepNumber: 2, title: stepData.step2.title, description: stepData.step2.description });
-        steps.push({
-          stepNumber: 3,
+        steps.push({ 
+          stepNumber: 3, 
           title: `${additiveType === 'creativity' ? 'TRIZ' : '스키마'} 원리 적용 과정`,
           subSteps: [
-            {
-              title: stepData?.step3?.step3a?.title || (additiveType === 'aesthetics' ? '형태(Shape) 분석/전이' : '문제점 1'),
-              description: stepData?.step3?.step3a?.description || ''
-            },
-            {
-              title: stepData?.step3?.step3b?.title || (additiveType === 'aesthetics' ? '재료(Material) 분석/전이' : '문제점 2'),
-              description: stepData?.step3?.step3b?.description || ''
-            },
-            {
-              title: stepData?.step3?.step3c?.title || (additiveType === 'aesthetics' ? '색상(Color) 분석/전이' : '문제점 3'),
-              description: stepData?.step3?.step3c?.description || ''
-            }
+            { title: stepData.step3.step3a.title, description: stepData.step3.step3a.description },
+            { title: stepData.step3.step3b.title, description: stepData.step3.step3b.description },
+            { title: stepData.step3.step3c.title, description: stepData.step3.step3c.description }
           ]
         });
         steps.push({ stepNumber: 4, title: stepData.step4.title, description: stepData.step4.description });
       }
-      return steps;
-    };
-
-    try {
-      const stepData = _safeJsonParse(text, { label: 'analyzeIdea' });
-      console.log('GPT 분석 완료:', stepData);
-      return { steps: buildStepsFromStepData(stepData) };
+      
+      return { steps: steps };
     } catch (e) {
-      console.warn('analyzeIdea parsing/schema failed, retrying once...', e);
-
-      const retryData = await _callOpenAIChatCompletions({
-        model: OPENAI_MINI_MODEL,
-        messages: _injectStrictJsonHint([
-          { role: "system", content: "You are a professional designer who helps novice designers who are having problems developing ideas." },
-          { role: "user", content: prompt }
-        ]),
-        max_tokens: OPENAI_JSON_MAX_TOKENS,
-        response_format: { type: "json_object" }
-      });
-
-      const retryText = retryData.choices[0].message.content;
-      const stepData = _safeJsonParse(retryText, { label: 'analyzeIdea(retry)' });
-      console.log('GPT 분석 완료(재시도):', stepData);
-      return { steps: buildStepsFromStepData(stepData) };
+      console.error("JSON parse error:", e, text);
+      throw new Error("JSON 파싱 실패: 프롬프트를 조정하거나 response_format을 확인하세요.");
     }
     
   } catch (error) {
@@ -1442,6 +1391,7 @@ async function createImprovedIdea(originalDescription, step1Problems, step3Analy
     ##주의사항:
     - 과도한 마케팅 표현 금지, 간결하고 구체적으로 작성
     - Step1~4의 내용에 모순이 발생하지 않도록 생성해야 함
+    - OriginIdea, Step3C, Step3D 등으로 표현하지 마세요. OriginIdea는 사용자 아이디어, Step3A는 Step3 1단계, Step3B는 2단계로 표현해야 합니다.
     - JSON 형식 외에 다른 설명 없이, 백틱이나 점 출력 없이, JSON 스키마 오류 없이 출력
 
     JSON 스키마:
@@ -1451,8 +1401,8 @@ async function createImprovedIdea(originalDescription, step1Problems, step3Analy
         const data = await _callOpenAIChatCompletions({
           model: OPENAI_MINI_MODEL,
           messages: [
-            { role: "system", content: "You are a concise product naming and concept copy expert." },
-            { role: "user", content: prompt }
+          { role: "system", content: "You are a concise product naming and concept copy expert." },
+          { role: "user", content: prompt }
           ],
           max_tokens: OPENAI_JSON_MAX_TOKENS,
           response_format: { type: "json_object" },
@@ -1521,9 +1471,8 @@ KEY RULES:
 2. SPECIFY exact visual changes: colors, materials, textures, patterns, shapes
 3. USE concrete descriptors: "flowing blue gradient" not "nice blue"
 4. MENTION specific elements: fabric, surface, structure, proportions
-5. KEEP total length under 100 words
-6. NO abstract concepts - only visual, tangible changes
-7. Focus on AESTHETIC attributes: color palette, material finish, pattern, texture, form language
+5. NO abstract concepts - only visual, tangible changes
+6. Focus on AESTHETIC attributes: color palette, material finish, pattern, texture, form language
 
 DO NOT:
 - Use vague terms like "modern", "innovative", "better"
@@ -1553,9 +1502,8 @@ KEY RULES:
 2. SPECIFY material transformations (acrylic, glass, metal, ceramic, etc.)
 3. Apply TRIZ-based structural innovations from Step 4
 4. Focus on 2-4 key creative transformations
-5. Total length: 50-80 words
-6. Make it natural and actionable
-7. Maintain PROFESSIONAL PRODUCT QUALITY - no crude or ugly elements
+5. Make it natural and actionable
+6. Maintain PROFESSIONAL PRODUCT QUALITY - no crude or ugly elements
 
 CRITICAL - MATERIAL DIVERSITY:
 - If Step 4 mentions segmentation → Consider transparent/translucent materials
@@ -1599,14 +1547,14 @@ KEY RULES:
 2. Specify FUNCTIONAL additions/modifications that solve usability issues
 3. Ensure added elements look PROFESSIONAL and WELL-DESIGNED
 4. Focus on 2-4 key usability improvements
-5. Total length: 50-80 words
-6. Make it natural and actionable
+5. Make it natural and actionable
 
 CRITICAL - BALANCE FUNCTION & AESTHETICS:
 - Make controls VISIBLE but not OVERSIZED or CRUDE
 - Integrate features SEAMLESSLY into the design
 - Use REFINED proportions and PROFESSIONAL finishes
 - Prioritize USER EXPERIENCE improvements from Step 4
+- Images of existing ideas should not be creatively transformed, and functional add-ons should be improved.
 
 DO NOT:
 - Mention Task Analysis methodology by name
@@ -1651,16 +1599,16 @@ EXAMPLE OUTPUT STYLE:
 Now create the modification prompt based on the product and Step 4 insight above. Output ONLY the prompt, nothing else.`;
 
     try {
-        const data = await _callOpenAIChatCompletions({
-          model: OPENAI_MINI_MODEL,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-          max_tokens: 1000,  // 500 → 1000으로 증가 (더 상세한 이미지 프롬프트)
-          temperature: 0.7
-        });
-        const generatedPrompt = data.choices[0].message.content.trim();
+      const data = await _callOpenAIChatCompletions({
+        model: OPENAI_MINI_MODEL,
+        messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+        ],
+        max_tokens: 1000,
+        temperature: 0.7
+      });
+      const generatedPrompt = (data.choices?.[0]?.message?.content || '').trim();
         
         console.log('GPT가 생성한 구체적 시각적 변경 지시 (Step4 분석 포함):', generatedPrompt);
         return generatedPrompt;
@@ -1697,12 +1645,12 @@ async function generateImageWithGemini(imagePrompt, originalImageUrl, strength =
 
         // 강도 설명을 자연어로 구성
         const strengthGuidance = strength >= 0.75 
-            ? 'Apply BOLD and RADICAL transformations. Completely reimagine the design with dramatic structural changes. Be extremely creative and experimental - this is the maximum transformation level.' 
+            ? 'Very aggressive and bold transformation: You can deviate significantly from the original design. Present innovative and unconventional ideas. Completely reconstruct existing concepts, and take a bold approach to solving problems.' 
             : strength >= 0.5 
-            ? 'Apply noticeable improvements with moderate creative changes. Enhance key features with visible modifications while keeping the general concept.' 
-            : 'Preserve the original design closely. Apply only subtle, refined improvements that enhance quality without major changes.';
+            ? 'BALANCED IMPROVEMENT: Present a noticeable improvement while maintaining the core features of the original. Balance practicality with creativity.' 
+            : 'Conservative and progressive improvement: Provide only fine and stable improvements while maintaining the original design as much as possible. Adjust the fine details without significantly changing the existing structure.';
 
-        // Gemini 공식 프롬프트 형식: "Using the provided image of [subject], [action instructions]."
+        
         const formattedPrompt = `Using the provided image of this product, ${imagePrompt}
 
 Transformation Intensity:
@@ -1712,8 +1660,6 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 - Make DRAMATIC structural changes
 - COMPLETELY transform the design elements
 - Apply RADICAL innovations and unexpected modifications
-- Do NOT worry about preserving original style - INNOVATE BOLDLY
-- This is the HIGHEST transformation level - be EXTREMELY creative
 
 ` : strength >= 0.5 ? `MODERATE TRANSFORMATION MODE:
 - Apply noticeable design changes
@@ -1722,17 +1668,16 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
 - Make clear improvements that are easy to spot
 
 ` : `MINIMAL TRANSFORMATION MODE:
-- Preserve the original design closely
-- Apply only subtle refinements
-- Maintain recognizability as top priority
-- Focus on quality enhancement over changes
+- It should be a conservative and gradual improvement.
+- Reflect only fine and stable improvements while maintaining the original design as much as possible.
+- Adjust only the details without significantly changing the existing structure.
 
 `}Technical Requirements:
 - Professional product photography quality
 - Clean white or minimal background
 - Realistic materials, textures, and lighting
 - Focus on visual changes only (no text or descriptions)
-- Output aspect ratio close to 1118x718 (1.56:1 wide landscape)
+- Output aspect ratio close to 1118x628 (1.78:1 wide landscape)
 - Keep the entire product visible without stretching or cropping`;
 
         console.log('최종 프롬프트:', formattedPrompt);
@@ -1742,14 +1687,14 @@ ${strength >= 0.75 ? `CRITICAL - MAXIMUM CREATIVITY MODE:
         const body = {
           contents: [{
             parts: [
-              { 
-                text: formattedPrompt
-              },
               {
                 inline_data: {
                   mime_type: mime,
                   data: base64
                 }
+              },
+              { 
+                text: formattedPrompt
               }
             ]
           }],
